@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>極簡每日儀表板</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen p-6 font-sans">
+  <div id="app" class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
+    
+    <!-- 頂部時間與天氣區域 -->
+    <div class="md:col-span-3 bg-gray-800 p-6 rounded-2xl flex justify-between items-center shadow-lg border border-gray-700">
+      <div>
+        <h1 class="text-3xl font-bold tracking-wider">{{ currentTime }}</h1>
+        <p class="text-gray-400 text-sm mt-1">{{ currentDate }}</p>
+      </div>
+      <div class="text-right">
+        <span class="text-2xl font-semibold">Dashboard</span>
+        <p class="text-xs text-emerald-400 mt-1">● Raspberry Pi 正常運行</p>
+      </div>
+    </div>
+
+    <!-- 左側與中間：工作日曆與薪資統計 -->
+    <div class="md:col-span-2 bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700 flex flex-col justify-between">
+      <div>
+        <div class="flex justify-between items-center mb-6">
+          <div class="flex items-center space-x-4">
+            <h2 class="text-xl font-bold text-gray-200">{{ currentYear }} 年 {{ currentMonth }} 月工作日曆</h2>
+            <div class="flex space-x-1">
+              <button @click="changeMonth(-1)" class="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm">◄</button>
+              <button @click="changeMonth(1)" class="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm">►</button>
+            </div>
+          </div>
+          <!-- 統計看板 -->
+          <div class="bg-gray-900 px-4 py-2 rounded-xl flex space-x-6 border border-gray-700">
+            <div>
+              <p class="text-xs text-gray-400">總工作天數</p>
+              <p class="text-lg font-bold text-indigo-400">{{ summary.total_working_days }} 天</p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-400">當月預算薪資</p>
+              <p class="text-lg font-bold text-emerald-400">{{ currency }} {{ summary.total_salary.toLocaleString() }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 星期標題 -->
+        <div class="grid grid-cols-7 gap-2 mb-2 text-center text-xs font-semibold text-gray-400">
+          <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+        </div>
+
+        <!-- 日曆 Grid -->
+        <div class="grid grid-cols-7 gap-2">
+          <!-- 空白日填補 -->
+          <div v-for="blank in firstDayOfWeek" :key="'b-'+blank" class="h-16 rounded-xl bg-gray-900/30"></div>
+          
+          <!-- 日期格子 -->
+          <div 
+            v-for="day in daysInMonth" 
+            :key="day"
+            @click="toggleDay(day)"
+            :class="[
+              'h-16 rounded-xl p-2 cursor-pointer flex flex-col justify-between transition border',
+              isWorked(day) ? 'bg-indigo-600/30 border-indigo-500 text-indigo-200' : 'bg-gray-900/60 border-gray-700/50 hover:border-gray-500'
+            ]"
+          >
+            <div class="flex justify-between items-center">
+              <span class="text-sm font-semibold">{{ day }}</span>
+              <span v-if="isWorked(day)" class="text-xs bg-indigo-500 text-white px-1.5 py-0.5 rounded">上班</span>
+            </div>
+            <div v-if="isWorked(day)" class="text-xs font-mono text-emerald-400">
+              +{{ currency }}{{ getDailyPay(day) }}
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="text-xs text-gray-400 mt-4">💡 點擊日期可快速開關「上班」狀態並自動更新薪資總額。</p>
+    </div>
+
+    <!-- 右側欄：待辦事項與速記筆記 -->
+    <div class="space-y-6">
+      
+      <!-- 待辦事項 -->
+      <div class="bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700">
+        <h2 class="text-lg font-bold mb-4 text-gray-200">每日待辦</h2>
+        <div class="flex mb-4">
+          <input 
+            v-model="newTodo" 
+            @keyup.enter="addTodo"
+            type="text" 
+            placeholder="新增事項..." 
+            class="flex-1 bg-gray-900 border border-gray-700 rounded-l-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
+          >
+          <button @click="addTodo" class="bg-indigo-600 hover:bg-indigo-500 px-4 rounded-r-xl text-sm font-semibold">新增</button>
+        </div>
+        <ul class="space-y-2 max-h-48 overflow-y-auto">
+          <li 
+            v-for="todo in todos" 
+            :key="todo.id" 
+            class="flex items-center justify-between bg-gray-900/60 p-2.5 rounded-xl border border-gray-700/50 text-sm"
+          >
+            <div class="flex items-center space-x-2">
+              <input type="checkbox" :checked="todo.is_completed" @change="toggleTodo(todo.id)" class="rounded">
+              <span :class="{'line-through text-gray-500': todo.is_completed}">{{ todo.task }}</span>
+            </div>
+            <button @click="deleteTodo(todo.id)" class="text-gray-500 hover:text-red-400 text-xs">✕</button>
+          </li>
+        </ul>
+      </div>
+
+      <!-- 隨手筆記 -->
+      <div class="bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700">
+        <div class="flex justify-between items-center mb-2">
+          <h2 class="text-lg font-bold text-gray-200">隨手速記</h2>
+          <span class="text-xs text-gray-400">{{ noteSaveStatus }}</span>
+        </div>
+        <textarea 
+          v-model="noteContent" 
+          @input="saveNoteDebounced"
+          rows="5" 
+          placeholder="隨手記錄任何文字，自動儲存..."
+          class="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-sm focus:outline-none focus:border-indigo-500"
+        ></textarea>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    const { createApp, ref, onMounted, computed } = Vue;
+
+    createApp({
+      setup() {
+        const currentTime = ref('');
+        const currentDate = ref('');
+        const currentYear = ref(new Date().getFullYear());
+        const currentMonth = ref(new Date().getMonth() + 1);
+        
+        const summary = ref({ total_working_days: 0, total_salary: 0 });
+        const logs = ref({});
+        const currency = ref('$');
+        const defaultRate = ref(1500);
+
+        const todos = ref([]);
+        const newTodo = ref('');
+
+        const noteContent = ref('');
+        const noteSaveStatus = ref('已同步');
+        let noteTimeout = null;
+
+        // 時間更新
+        const updateClock = () => {
+          const now = new Date();
+          currentTime.value = now.toLocaleTimeString('zh-TW', { hour12: false });
+          currentDate.value = now.toLocaleDateString('zh-TW', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        };
+
+        // 月曆計算
+        const daysInMonth = computed(() => new Date(currentYear.value, currentMonth.value, 0).getDate());
+        const firstDayOfWeek = computed(() => new Date(currentYear.value, currentMonth.value - 1, 1).getDay());
+
+        const formatDate = (day) => {
+          const m = String(currentMonth.value).padStart(2, '0');
+          const d = String(day).padStart(2, '0');
+          return `${currentYear.value}-${m}-${d}`;
+        };
+
+        const isWorked = (day) => logs.value[formatDate(day)]?.status === 'worked';
+        const getDailyPay = (day) => logs.value[formatDate(day)]?.daily_pay || defaultRate.value;
+
+        // Fetch API
+        const loadMonthData = async () => {
+          const res = await fetch(`/api/work/${currentYear.value}/${currentMonth.value}`);
+          const data = await res.json();
+          logs.value = data.logs;
+          summary.value = data.summary;
+        };
+
+        const toggleDay = async (day) => {
+          const dateStr = formatDate(day);
+          const currentStatus = logs.value[dateStr]?.status;
+          const newStatus = currentStatus === 'worked' ? 'off' : 'worked';
+          
+          await fetch('/api/work/toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: dateStr, status: newStatus, daily_pay: defaultRate.value })
+          });
+          loadMonthData();
+        };
+
+        const changeMonth = (delta) => {
+          currentMonth.value += delta;
+          if (currentMonth.value > 12) { currentMonth.value = 1; currentYear.value++; }
+          if (currentMonth.value < 1) { currentMonth.value = 12; currentYear.value--; }
+          loadMonthData();
+        };
+
+        // Todos
+        const loadTodos = async () => {
+          const res = await fetch('/api/todos');
+          todos.value = await res.json();
+        };
+        const addTodo = async () => {
+          if (!newTodo.value.trim()) return;
+          await fetch('/api/todos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task: newTodo.value })
+          });
+          newTodo.value = '';
+          loadTodos();
+        };
+        const toggleTodo = async (id) => {
+          await fetch(`/api/todos/${id}/toggle`, { method: 'PUT' });
+          loadTodos();
+        };
+        const deleteTodo = async (id) => {
+          await fetch(`/api/todos/${id}`, { method: 'DELETE' });
+          loadTodos();
+        };
+
+        // Note
+        const loadNote = async () => {
+          const res = await fetch('/api/note');
+          const data = await res.json();
+          noteContent.value = data.content;
+        };
+        const saveNoteDebounced = () => {
+          noteSaveStatus.value = '儲存中...';
+          clearTimeout(noteTimeout);
+          noteTimeout = setTimeout(async () => {
+            await fetch('/api/note', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ content: noteContent.value })
+            });
+            noteSaveStatus.value = '已自動儲存';
+          }, 800);
+        };
+
+        onMounted(() => {
+          updateClock();
+          setInterval(updateClock, 1000);
+          loadMonthData();
+          loadTodos();
+          loadNote();
+        });
+
+        return {
+          currentTime, currentDate, currentYear, currentMonth, daysInMonth, firstDayOfWeek,
+          summary, currency, toggleDay, isWorked, getDailyPay, changeMonth,
+          todos, newTodo, addTodo, toggleTodo, deleteTodo,
+          noteContent, noteSaveStatus, saveNoteDebounced
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
