@@ -55,7 +55,7 @@ def init_db():
     if "location" not in columns:
         cursor.execute("ALTER TABLE work_logs ADD COLUMN location TEXT DEFAULT ''")
 
-    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('default_daily_rate', '1500')")
+    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('default_daily_rate', '700')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('currency', '$')")
     
     conn.commit()
@@ -86,12 +86,12 @@ def update_settings(data: SettingsSchema):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    # 1. 更新基本設定
+    # 更新預設薪資與貨幣符號
     cursor.execute("UPDATE settings SET value = ? WHERE key = 'default_daily_rate'", (str(data.default_daily_rate),))
     cursor.execute("UPDATE settings SET value = ? WHERE key = 'currency'", (data.currency,))
     
-    # 2. 自動按新基本日薪重新計算所有舊紀錄的金額
-    cursor.execute("SELECT date, status FROM work_logs WHERE status != 'off'")
+    # 強制重新計算資料庫內現有所有活頁紀錄的當日薪資
+    cursor.execute("SELECT date, status FROM work_logs")
     rows = cursor.fetchall()
     
     for row in rows:
@@ -148,10 +148,9 @@ def update_work_day(data: WorkLogSchema):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    # 取得最新設定的日薪費率
     cursor.execute("SELECT value FROM settings WHERE key = 'default_daily_rate'")
     row = cursor.fetchone()
-    base_rate = float(row[0]) if row else 1500.0
+    base_rate = float(row[0]) if row else 700.0
     
     rule = WORK_TYPES.get(data.status, WORK_TYPES["off"])
     
