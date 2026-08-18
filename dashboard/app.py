@@ -17,7 +17,6 @@ app.add_middleware(
 
 DB_FILE = "data/dashboard.db"
 
-# Work status types and corresponding working day & salary multipliers
 WORK_TYPES = {
     "off": {"days": 0.0, "multiplier": 0.0, "label": "Off"},
     "half": {"days": 0.5, "multiplier": 0.5, "label": "Half Day"},
@@ -32,7 +31,6 @@ def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    # Create settings table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
@@ -40,7 +38,6 @@ def init_db():
         )
     """)
     
-    # Create work_logs table if not exists
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS work_logs (
             date TEXT PRIMARY KEY,
@@ -51,7 +48,6 @@ def init_db():
         )
     """)
     
-    # Auto-migration: Ensure columns exist for upgraded SQLite databases
     cursor.execute("PRAGMA table_info(work_logs)")
     columns = [column[1] for column in cursor.fetchall()]
     if "work_days" not in columns:
@@ -59,7 +55,6 @@ def init_db():
     if "location" not in columns:
         cursor.execute("ALTER TABLE work_logs ADD COLUMN location TEXT DEFAULT ''")
 
-    # Insert default settings if they do not exist
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('default_daily_rate', '1500')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('currency', '$')")
     
@@ -90,8 +85,21 @@ def get_settings():
 def update_settings(data: SettingsSchema):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
+    
+    # 1. 更新基本設定
     cursor.execute("UPDATE settings SET value = ? WHERE key = 'default_daily_rate'", (str(data.default_daily_rate),))
     cursor.execute("UPDATE settings SET value = ? WHERE key = 'currency'", (data.currency,))
+    
+    # 2. 自動按新基本日薪重新計算所有舊紀錄的金額
+    cursor.execute("SELECT date, status FROM work_logs WHERE status != 'off'")
+    rows = cursor.fetchall()
+    
+    for row in rows:
+        d_date, d_status = row[0], row[1]
+        rule = WORK_TYPES.get(d_status, WORK_TYPES["off"])
+        new_pay = data.default_daily_rate * rule["multiplier"]
+        cursor.execute("UPDATE work_logs SET daily_pay = ? WHERE date = ?", (new_pay, d_date))
+
     conn.commit()
     conn.close()
     return {"status": "success"}
@@ -140,6 +148,7 @@ def update_work_day(data: WorkLogSchema):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
+    # 取得最新設定的日薪費率
     cursor.execute("SELECT value FROM settings WHERE key = 'default_daily_rate'")
     row = cursor.fetchone()
     base_rate = float(row[0]) if row else 1500.0
@@ -167,5 +176,4 @@ def update_work_day(data: WorkLogSchema):
     conn.close()
     return {"status": "success"}
 
-# Serve static files for the frontend
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
