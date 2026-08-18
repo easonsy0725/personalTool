@@ -10,25 +10,23 @@
     * { box-sizing: border-box; }
   </style>
 </head>
-<body class="bg-[#FAF9F6] text-[#191919] min-h-screen p-3 sm:p-8 font-sans antialiased">
-  <div id="app" class="max-w-4xl mx-auto space-y-4 sm:space-y-8">
+<body class="bg-[#FAF9F6] text-[#191919] min-h-screen p-2 sm:p-8 font-sans antialiased">
+  <div id="app" class="max-w-4xl mx-auto space-y-4">
     
-    <!-- 頁頭 -->
-    <header class="flex justify-between items-baseline border-b border-[#E5E5E5] pb-3 sm:pb-6">
+    <!-- Header -->
+    <header class="flex justify-between items-baseline border-b border-[#E5E5E5] pb-3">
       <div>
-        <h1 class="text-xl sm:text-3xl font-semibold tracking-tight text-[#111111]">Work & Salary Tracker</h1>
-        <p class="text-[10px] sm:text-xs text-[#737373] font-mono mt-0.5 uppercase">{{ currentTime }} | {{ currentDate }}</p>
+        <h1 class="text-lg sm:text-3xl font-semibold tracking-tight text-[#111111]">Work & Salary Tracker</h1>
+        <p class="text-[10px] sm:text-xs text-[#737373] font-mono uppercase">{{ currentTime }} | {{ currentDate }}</p>
       </div>
-      <div>
-        <button @click="showSettings = true" class="text-xs font-mono text-[#737373] hover:text-black transition">
-          [SETTINGS]
-        </button>
-      </div>
+      <button @click="showSettings = true" class="text-xs font-mono text-[#737373] hover:text-black">
+        [SETTINGS]
+      </button>
     </header>
 
-    <!-- 月曆控制與總計 -->
-    <main class="space-y-3 sm:space-y-6">
-      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2 sm:gap-0">
+    <!-- Calendar Controls -->
+    <main class="space-y-3">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2">
         <div class="flex items-center space-x-3">
           <h2 class="text-base sm:text-xl font-medium text-[#111111]">{{ currentYear }} / {{ currentMonth }}</h2>
           <div class="flex space-x-1 font-mono text-xs text-[#737373]">
@@ -38,127 +36,89 @@
           </div>
         </div>
 
-        <!-- 數據統計 -->
-        <div class="flex space-x-4 sm:space-x-8 text-xs sm:text-sm font-mono">
-          <div>
-            <span class="text-[#737373]">DAYS: </span>
-            <span class="font-semibold text-[#111111]">{{ summary.total_working_days }}</span>
-          </div>
-          <div>
-            <span class="text-[#737373]">SALARY: </span>
-            <span class="font-semibold text-[#111111]">{{ currency }}{{ summary.total_salary.toLocaleString() }}</span>
-          </div>
+        <div class="flex space-x-6 text-xs sm:text-sm font-mono">
+          <div><span class="text-[#737373]">DAYS: </span><span class="font-semibold">{{ summary.total_working_days }}</span></div>
+          <div><span class="text-[#737373]">SALARY: </span><span class="font-semibold">{{ currency }}{{ summary.total_salary.toLocaleString() }}</span></div>
         </div>
       </div>
 
-      <!-- 日曆 Grid -->
+      <!-- Calendar Grid -->
       <div class="border-t border-l border-[#E5E5E5] grid grid-cols-7 text-xs font-mono w-full">
-        <div v-for="d in ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']" :key="d" class="p-1 sm:p-2 border-r border-b border-[#E5E5E5] text-[10px] sm:text-xs text-[#A3A3A3] text-center">
+        <div v-for="d in ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']" :key="d" class="p-1 border-r border-b border-[#E5E5E5] text-[10px] text-[#A3A3A3] text-center">
           {{ d }}
         </div>
-        <div v-for="blank in firstDayOfWeek" :key="'b-'+blank" class="min-h-[65px] sm:min-h-[90px] border-r border-b border-[#E5E5E5] bg-[#F5F5F3]"></div>
+        <div v-for="blank in firstDayOfWeek" :key="'b-'+blank" class="min-h-[60px] sm:min-h-[85px] border-r border-b border-[#E5E5E5] bg-[#F5F5F3]"></div>
         
         <div 
           v-for="day in daysInMonth" 
           :key="day"
           @click="openModal(day)"
           :class="[
-            'min-h-[65px] sm:min-h-[90px] p-1 sm:p-2 border-r border-b border-[#E5E5E5] cursor-pointer transition flex flex-col justify-between overflow-hidden relative',
+            'min-h-[60px] sm:min-h-[85px] p-1 border-r border-b border-[#E5E5E5] cursor-pointer flex flex-col justify-between overflow-hidden',
             isWorkedDay(day) ? 'bg-[#111111] text-white' : 'hover:bg-[#F0F0EE]'
           ]"
         >
-          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-0.5">
-            <span class="text-[10px] sm:text-xs font-bold leading-none">{{ day }}</span>
-            <span v-if="isWorkedDay(day)" class="text-[7px] sm:text-[9px] uppercase font-mono px-0.5 bg-[#333333] text-[#E5E5E5] truncate max-w-full leading-tight">
+          <div class="flex justify-between items-center w-full">
+            <span class="text-[10px] font-bold">{{ day }}</span>
+            <span v-if="isWorkedDay(day)" class="text-[7px] uppercase px-0.5 bg-[#333] text-[#E5E5E5] truncate max-w-[70%]">
               {{ getStatusLabel(getLog(day).status) }}
             </span>
           </div>
           
-          <div v-if="isWorkedDay(day)" class="mt-1 space-y-0.5">
-            <p v-if="getLog(day).location" class="text-[8px] sm:text-[10px] text-[#A3A3A3] truncate leading-tight">📍 {{ getLog(day).location }}</p>
-            <p class="text-[8px] sm:text-[10px] font-mono text-[#E5E5E5] leading-tight">+{{ currency }}{{ getLog(day).daily_pay }}</p>
+          <div v-if="isWorkedDay(day)" class="mt-1 space-y-0.5 w-full">
+            <p v-if="getLog(day).location" class="text-[8px] text-[#A3A3A3] truncate">📍 {{ getLog(day).location }}</p>
+            <p class="text-[8px] font-mono text-[#E5E5E5] truncate">+{{ currency }}{{ getLog(day).daily_pay }}</p>
           </div>
         </div>
       </div>
     </main>
 
-    <!-- 工作編輯 Modal -->
+    <!-- Work Modal -->
     <div v-if="selectedDay" class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-      <div class="bg-[#FAF9F6] border border-[#111111] p-5 max-w-md w-full space-y-4 shadow-2xl">
-        <div class="flex justify-between items-center border-b border-[#E5E5E5] pb-2">
-          <h3 class="text-xs font-mono tracking-widest uppercase text-[#737373]">
-            MARK WORK - {{ formatDate(selectedDay) }}
-          </h3>
-          <button @click="selectedDay = null" class="text-xs font-mono hover:opacity-50">✕</button>
+      <div class="bg-[#FAF9F6] border border-[#111111] p-4 max-w-md w-full space-y-3">
+        <div class="flex justify-between items-center border-b pb-2">
+          <h3 class="text-xs font-mono text-[#737373]">MARK WORK - {{ formatDate(selectedDay) }}</h3>
+          <button @click="selectedDay = null">✕</button>
         </div>
-
-        <div class="space-y-3 text-xs font-mono">
-          <div>
-            <label class="block text-[#737373] mb-2">WORK STATUS</label>
-            <div class="grid grid-cols-2 gap-2">
-              <button 
-                v-for="(val, key) in statusOptions" 
-                :key="key"
-                @click="formStatus = key"
-                :class="[
-                  'p-2 border text-left transition',
-                  formStatus === key ? 'bg-[#111111] text-white border-[#111111]' : 'border-[#E5E5E5] hover:border-black'
-                ]"
-              >
-                <div class="font-bold text-[11px] sm:text-xs">{{ val.label }}</div>
-                <div class="text-[9px] sm:text-[10px] opacity-70">{{ val.desc }}</div>
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label class="block text-[#737373] mb-1">LOCATION</label>
-            <input 
-              v-model="formLocation" 
-              type="text" 
-              placeholder="e.g. Office, Site A"
-              class="w-full bg-[#F5F5F3] border border-[#E5E5E5] p-2 text-xs focus:outline-none focus:border-[#111111]"
-            >
-          </div>
+        <div class="grid grid-cols-2 gap-2 text-xs font-mono">
+          <button 
+            v-for="(val, key) in statusOptions" 
+            :key="key"
+            @click="formStatus = key"
+            :class="['p-2 border text-left', formStatus === key ? 'bg-[#111111] text-white' : 'border-[#E5E5E5]']"
+          >
+            <div class="font-bold text-[10px]">{{ val.label }}</div>
+            <div class="text-[8px] opacity-70">{{ val.desc }}</div>
+          </button>
         </div>
-
-        <div class="flex justify-end space-x-2 pt-2 border-t border-[#E5E5E5]">
-          <button @click="selectedDay = null" class="px-3 py-1.5 text-xs font-mono hover:opacity-50">CANCEL</button>
-          <button @click="saveWorkDay" class="px-4 py-1.5 bg-[#111111] text-white text-xs font-mono hover:bg-black">SAVE</button>
+        <input v-model="formLocation" placeholder="Location" class="w-full bg-[#F5F5F3] border p-2 text-xs">
+        <div class="flex justify-end space-x-2 pt-2 border-t">
+          <button @click="selectedDay = null" class="px-3 py-1 text-xs">CANCEL</button>
+          <button @click="saveWorkDay" class="px-3 py-1 bg-[#111111] text-white text-xs">SAVE</button>
         </div>
       </div>
     </div>
 
-    <!-- 預設薪資設定 Modal -->
+    <!-- Base Settings Modal -->
     <div v-if="showSettings" class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-      <div class="bg-[#FAF9F6] border border-[#111111] p-5 max-w-sm w-full space-y-4 shadow-2xl">
-        <div class="flex justify-between items-center border-b border-[#E5E5E5] pb-2">
-          <h3 class="text-xs font-mono tracking-widest uppercase text-[#737373]">Base Settings</h3>
-          <button @click="showSettings = false" class="text-xs font-mono hover:opacity-50">✕</button>
+      <div class="bg-[#FAF9F6] border border-[#111111] p-4 max-w-sm w-full space-y-3">
+        <div class="flex justify-between items-center border-b pb-2">
+          <h3 class="text-xs font-mono text-[#737373]">BASE SETTINGS</h3>
+          <button @click="showSettings = false">✕</button>
         </div>
-        
-        <div class="space-y-3 font-mono text-xs">
+        <div class="space-y-2 font-mono text-xs">
           <div>
             <label class="block text-[#737373] mb-1">BASE DAILY RATE</label>
-            <input 
-              v-model.number="defaultRate" 
-              type="number" 
-              class="w-full bg-[#F5F5F3] border border-[#E5E5E5] p-2 text-xs focus:outline-none focus:border-[#111111]"
-            >
+            <input v-model.number="defaultRate" type="number" class="w-full bg-[#F5F5F3] border p-2 text-xs">
           </div>
           <div>
             <label class="block text-[#737373] mb-1">CURRENCY SYMBOL</label>
-            <input 
-              v-model="currency" 
-              type="text" 
-              class="w-full bg-[#F5F5F3] border border-[#E5E5E5] p-2 text-xs focus:outline-none focus:border-[#111111]"
-            >
+            <input v-model="currency" type="text" class="w-full bg-[#F5F5F3] border p-2 text-xs">
           </div>
         </div>
-
-        <div class="flex justify-end space-x-2 pt-2 border-t border-[#E5E5E5]">
-          <button @click="showSettings = false" class="px-3 py-1 text-xs font-mono hover:opacity-50">CANCEL</button>
-          <button @click="saveSettings" class="px-3 py-1 bg-[#111111] text-white text-xs font-mono hover:bg-black">SAVE</button>
+        <div class="flex justify-end space-x-2 pt-2 border-t">
+          <button @click="showSettings = false" class="px-3 py-1 text-xs">CANCEL</button>
+          <button @click="saveSettings" class="px-3 py-1 bg-[#111111] text-white text-xs">SAVE</button>
         </div>
       </div>
     </div>
@@ -186,12 +146,12 @@
         const formLocation = ref('');
 
         const statusOptions = {
-          'off': { label: 'Off', shortLabel: 'Off', desc: '0 Days / 0x Pay' },
-          'half': { label: 'Half Day', shortLabel: 'Half', desc: '0.5 Days / 0.5x Pay' },
-          'full': { label: 'Full Day', shortLabel: 'Full', desc: 'Full', desc: '1.0 Days / 1.0x Pay' },
-          'ot_1.5': { label: 'OT Standard', shortLabel: 'OT 1.5x', desc: '1.5 Days / 1.5x Pay' },
-          'ot_2.0': { label: 'OT Past 00:00', shortLabel: 'OT 2.0x', desc: '2.0 Days / 2.0x Pay' },
-          'ot_3.0': { label: 'OT Past 06:00', shortLabel: 'OT 3.0x', desc: '3.0 Days / 3.0x Pay' }
+          'off': { label: 'Off', shortLabel: 'Off', desc: '0x Pay' },
+          'half': { label: 'Half Day', shortLabel: 'Half', desc: '0.5x Pay' },
+          'full': { label: 'Full Day', shortLabel: 'Full', desc: '1.0x Pay' },
+          'ot_1.5': { label: 'OT Standard', shortLabel: 'OT 1.5x', desc: '1.5x Pay' },
+          'ot_2.0': { label: 'OT Past 00:00', shortLabel: 'OT 2.0x', desc: '2.0x Pay' },
+          'ot_3.0': { label: 'OT Past 06:00', shortLabel: 'OT 3.0x', desc: '3.0x Pay' }
         };
 
         const updateClock = () => {
@@ -245,12 +205,11 @@
         };
 
         const saveSettings = async () => {
-          const rateVal = parseFloat(defaultRate.value) || 0;
           await fetch('/api/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-              default_daily_rate: rateVal, 
+              default_daily_rate: parseFloat(defaultRate.value) || 0, 
               currency: currency.value 
             })
           });

@@ -21,9 +21,9 @@ WORK_TYPES = {
     "off": {"days": 0.0, "multiplier": 0.0, "label": "Off"},
     "half": {"days": 0.5, "multiplier": 0.5, "label": "Half Day"},
     "full": {"days": 1.0, "multiplier": 1.0, "label": "Full Day"},
-    "ot_1.5": {"days": 1.5, "multiplier": 1.5, "label": "OT (1.5x)"},
-    "ot_2.0": {"days": 2.0, "multiplier": 2.0, "label": "OT Past 00:00 (2x)"},
-    "ot_3.0": {"days": 3.0, "multiplier": 3.0, "label": "OT Past 06:00 (3x)"},
+    "ot_1.5": {"days": 1.5, "multiplier": 1.5, "label": "OT Standard"},
+    "ot_2.0": {"days": 2.0, "multiplier": 2.0, "label": "OT Past 00:00"},
+    "ot_3.0": {"days": 3.0, "multiplier": 3.0, "label": "OT Past 06:00"},
 }
 
 def init_db():
@@ -48,13 +48,6 @@ def init_db():
         )
     """)
     
-    cursor.execute("PRAGMA table_info(work_logs)")
-    columns = [column[1] for column in cursor.fetchall()]
-    if "work_days" not in columns:
-        cursor.execute("ALTER TABLE work_logs ADD COLUMN work_days REAL DEFAULT 1.0")
-    if "location" not in columns:
-        cursor.execute("ALTER TABLE work_logs ADD COLUMN location TEXT DEFAULT ''")
-
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('default_daily_rate', '700')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('currency', '$')")
     
@@ -86,16 +79,15 @@ def update_settings(data: SettingsSchema):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    # 更新預設薪資與貨幣符號
+    # 1. Update settings
     cursor.execute("UPDATE settings SET value = ? WHERE key = 'default_daily_rate'", (str(data.default_daily_rate),))
     cursor.execute("UPDATE settings SET value = ? WHERE key = 'currency'", (data.currency,))
     
-    # 強制重新計算資料庫內現有所有活頁紀錄的當日薪資
-    cursor.execute("SELECT date, status FROM work_logs")
+    # 2. Recalculate existing work logs based on new daily rate
+    cursor.execute("SELECT date, status FROM work_logs WHERE status != 'off'")
     rows = cursor.fetchall()
     
-    for row in rows:
-        d_date, d_status = row[0], row[1]
+    for d_date, d_status in rows:
         rule = WORK_TYPES.get(d_status, WORK_TYPES["off"])
         new_pay = data.default_daily_rate * rule["multiplier"]
         cursor.execute("UPDATE work_logs SET daily_pay = ? WHERE date = ?", (new_pay, d_date))
