@@ -1,14 +1,13 @@
 import sqlite3
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 
-app = FastAPI(title="Daily Command Center")
+app = FastAPI(title="Work & Salary Tracker")
 
-# 允許跨網域請求 (CORS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,6 +16,16 @@ app.add_middleware(
 )
 
 DB_FILE = "data/dashboard.db"
+
+# 出勤型態與對應倍率設定
+WORK_TYPES = {
+    "off": {"days": 0.0, "multiplier": 0.0, "label": "Off"},
+    "half": {"days": 0.5, "multiplier": 0.5, "label": "Half Day"},
+    "full": {"days": 1.0, "multiplier": 1.0, "label": "Full Day"},
+    "ot_1.5": {"days": 1.5, "multiplier": 1.5, "label": "OT (1.5x)"},
+    "ot_2.0": {"days": 2.0, "multiplier": 2.0, "label": "OT Past 00:00 (2x)"},
+    "ot_3.0": {"days": 3.0, "multiplier": 3.0, "label": "OT Past 06:00 (3x)"},
+}
 
 def init_db():
     os.makedirs("data", exist_ok=True)
@@ -33,50 +42,25 @@ def init_db():
             date TEXT PRIMARY KEY,
             status TEXT NOT NULL,
             daily_pay REAL NOT NULL,
-            note TEXT
+            work_days REAL NOT NULL,
+            location TEXT DEFAULT ''
         )
     """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS todos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task TEXT NOT NULL,
-            is_completed BOOLEAN DEFAULT 0
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS notes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content TEXT
-        )
-    """)
-    # 初始化預設日薪
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('default_daily_rate', '1500')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('currency', '$')")
-    # 初始化單一筆記紀錄
-    cursor.execute("INSERT OR IGNORE INTO notes (id, content) VALUES (1, '')")
     conn.commit()
     conn.close()
 
 init_db()
 
-# --- Pydantic 模型 ---
 class WorkLogSchema(BaseModel):
     date: str
-    status: str  # 'worked' 或 'off'
-    daily_pay: Optional[float] = None
-    note: Optional[str] = ""
-
-class TodoSchema(BaseModel):
-    task: str
+    status: str
+    location: Optional[str] = ""
 
 class SettingsSchema(BaseModel):
     default_daily_rate: float
     currency: str
-
-class NoteSchema(BaseModel):
-    content: str
-
-# --- API 路由 ---
 
 @app.get("/api/settings")
 def get_settings():
@@ -103,16 +87,15 @@ def get_monthly_work(year: int, month: int):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    cursor.execute("SELECT date, status, daily_pay, note FROM work_logs WHERE date LIKE ?", (f"{month_str}%",))
+    cursor.execute("SELECT date, status, daily_pay, work_days, location FROM work_logs WHERE date LIKE ?", (f"{month_str}%",))
     rows = cursor.fetchall()
     
-    logs = {r[0]: {"status": r[1], "daily_pay": r[2], "note": r[3]} for r in rows}
+    logs = {r[0]: {"status": r[1], "daily_pay": r[2], "work_days": r[3], "location": r[4]} for r in rows}
     
-    # 計算當月統計
     cursor.execute("""
-        SELECT COUNT(*), SUM(daily_pay)
+        SELECT SUM(work_days), SUM(daily_pay)
         FROM work_logs
-        WHERE date LIKE ? AND status = 'worked'
+        WHERE date LIKE ? AND status != 'off'
     """, (f"{month_str}%",))
     
     total_days, total_salary = cursor.fetchone()
@@ -121,89 +104,39 @@ def get_monthly_work(year: int, month: int):
     return {
         "logs": logs,
         "summary": {
-            "total_working_days": total_days or 0,
+            "total_working_days": total_days or 0.0,
             "total_salary": total_salary or 0.0
         }
     }
 
-@app.post("/api/work/toggle")
-def toggle_work_day(data: WorkLogSchema):
+@app.post("/api/work/update")
+def update_work_day(data: WorkLogSchema):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    # 取得預設日薪
-    if data.daily_pay is None:
-        cursor.execute("SELECT value FROM settings WHERE key = 'default_daily_rate'")
-        data.daily_pay = float(cursor.fetchone()[0])
+    cursor.execute("SELECT value FROM settings WHERE key = 'default_daily_rate'")
+    base_rate = float(cursor.fetchone()[0])
+    
+    rule = WORK_TYPES.get(data.status, WORK_TYPES["off"])
+    
+    if data.status == "off":
+        cursor.execute("DELETE FROM work_logs WHERE date = ?", (data.date,))
+    else:
+        calculated_pay = base_rate * rule["multiplier"]
+        work_days = rule["days"]
         
-    cursor.execute("""
-        INSERT INTO work_logs (date, status, daily_pay, note)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(date) DO UPDATE SET
-            status = excluded.status,
-            daily_pay = excluded.daily_pay,
-            note = excluded.note
-    """, (data.date, data.status, data.daily_pay, data.note))
+        cursor.execute("""
+            INSERT INTO work_logs (date, status, daily_pay, work_days, location)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(date) DO UPDATE SET
+                status = excluded.status,
+                daily_pay = excluded.daily_pay,
+                work_days = excluded.work_days,
+                location = excluded.location
+        """, (data.date, data.status, calculated_pay, work_days, data.location))
     
     conn.commit()
     conn.close()
     return {"status": "success"}
 
-# 待辦事項 API
-@app.get("/api/todos")
-def get_todos():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, task, is_completed FROM todos")
-    todos = [{"id": r[0], "task": r[1], "is_completed": bool(r[2])} for r in cursor.fetchall()]
-    conn.close()
-    return todos
-
-@app.post("/api/todos")
-def add_todo(data: TodoSchema):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO todos (task) VALUES (?)", (data.task,))
-    conn.commit()
-    conn.close()
-    return {"status": "success"}
-
-@app.put("/api/todos/{todo_id}/toggle")
-def toggle_todo(todo_id: int):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE todos SET is_completed = NOT is_completed WHERE id = ?", (todo_id,))
-    conn.commit()
-    conn.close()
-    return {"status": "success"}
-
-@app.delete("/api/todos/{todo_id}")
-def delete_todo(todo_id: int):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
-    conn.commit()
-    conn.close()
-    return {"status": "success"}
-
-# 筆記 API
-@app.get("/api/note")
-def get_note():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT content FROM notes WHERE id = 1")
-    row = cursor.fetchone()
-    conn.close()
-    return {"content": row[0] if row else ""}
-
-@app.post("/api/note")
-def update_note(data: NoteSchema):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE notes SET content = ? WHERE id = 1", (data.content,))
-    conn.commit()
-    conn.close()
-    return {"status": "success"}
-
-# 靜態頁面服務
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

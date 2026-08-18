@@ -1,138 +1,142 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard</title>
+  <title>Work & Salary Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 </head>
 <body class="bg-[#FAF9F6] text-[#191919] min-h-screen p-8 font-sans antialiased">
-  <div id="app" class="max-w-5xl mx-auto space-y-10">
+  <div id="app" class="max-w-4xl mx-auto space-y-8">
     
-    <!-- 頂部：極簡頁頭 -->
+    <!-- 頁頭 -->
     <header class="flex justify-between items-baseline border-b border-[#E5E5E5] pb-6">
       <div>
-        <h1 class="text-4xl font-semibold tracking-tight text-[#111111]">{{ currentTime }}</h1>
-        <p class="text-xs text-[#737373] mt-1 tracking-wide uppercase">{{ currentDate }}</p>
+        <h1 class="text-3xl font-semibold tracking-tight text-[#111111]">Work & Salary Tracker</h1>
+        <p class="text-xs text-[#737373] font-mono mt-1 uppercase">{{ currentTime }} | {{ currentDate }}</p>
       </div>
-      <div class="text-right flex items-center space-x-4">
+      <div class="flex items-center space-x-4">
         <button @click="showSettings = true" class="text-xs font-mono text-[#737373] hover:text-black transition">
           [SETTINGS]
         </button>
-        <span class="text-xs font-mono text-[#A3A3A3]">SYSTEM ONLINE</span>
       </div>
     </header>
 
-    <!-- 主區域：網格佈局 -->
-    <main class="grid grid-cols-1 md:grid-cols-3 gap-10">
-      
-      <!-- 左側與中間：日曆與薪資 -->
-      <section class="md:col-span-2 space-y-6">
-        <div class="flex justify-between items-end">
-          <div class="flex items-center space-x-3">
-            <h2 class="text-lg font-medium text-[#111111]">{{ currentYear }} / {{ currentMonth }}</h2>
-            <div class="flex space-x-1 font-mono text-xs text-[#737373]">
-              <button @click="changeMonth(-1)" class="hover:text-black px-1">Prev</button>
-              <span>/</span>
-              <button @click="changeMonth(1)" class="hover:text-black px-1">Next</button>
-            </div>
-          </div>
-          <!-- 純文字數據統計 -->
-          <div class="flex space-x-6 text-sm font-mono">
-            <div>
-              <span class="text-[#737373]">DAYS: </span>
-              <span class="font-semibold">{{ summary.total_working_days }}</span>
-            </div>
-            <div>
-              <span class="text-[#737373]">TOTAL: </span>
-              <span class="font-semibold">{{ currency }}{{ summary.total_salary.toLocaleString() }}</span>
-            </div>
+    <!-- 月曆控制與總計 -->
+    <main class="space-y-6">
+      <div class="flex justify-between items-end">
+        <div class="flex items-center space-x-3">
+          <h2 class="text-xl font-medium text-[#111111]">{{ currentYear }} / {{ currentMonth }}</h2>
+          <div class="flex space-x-1 font-mono text-xs text-[#737373]">
+            <button @click="changeMonth(-1)" class="hover:text-black px-1">Prev</button>
+            <span>/</span>
+            <button @click="changeMonth(1)" class="hover:text-black px-1">Next</button>
           </div>
         </div>
 
-        <!-- 日曆 Grid -->
-        <div class="border-t border-l border-[#E5E5E5] grid grid-cols-7 text-sm font-mono">
-          <div v-for="d in ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']" :key="d" class="p-2 border-r border-b border-[#E5E5E5] text-xs text-[#A3A3A3] text-center">
-            {{ d }}
+        <!-- 數據統計 -->
+        <div class="flex space-x-8 text-sm font-mono">
+          <div>
+            <span class="text-[#737373]">TOTAL DAYS: </span>
+            <span class="font-semibold text-[#111111]">{{ summary.total_working_days }}</span>
           </div>
-          <div v-for="blank in firstDayOfWeek" :key="'b-'+blank" class="h-16 border-r border-b border-[#E5E5E5] bg-[#F5F5F3]"></div>
-          <div 
-            v-for="day in daysInMonth" 
-            :key="day"
-            @click="toggleDay(day)"
-            :class="[
-              'h-16 p-2 border-r border-b border-[#E5E5E5] cursor-pointer transition flex flex-col justify-between',
-              isWorked(day) ? 'bg-[#111111] text-white' : 'hover:bg-[#F0F0EE]'
-            ]"
-          >
-            <span class="text-xs">{{ day }}</span>
-            <span v-if="isWorked(day)" class="text-[10px] font-mono text-[#A3A3A3]">+{{ getDailyPay(day) }}</span>
+          <div>
+            <span class="text-[#737373]">TOTAL SALARY: </span>
+            <span class="font-semibold text-[#111111]">{{ currency }}{{ summary.total_salary.toLocaleString() }}</span>
           </div>
         </div>
-      </section>
+      </div>
 
-      <!-- 右側：待辦與筆記 -->
-      <section class="space-y-8">
+      <!-- 日曆 Grid -->
+      <div class="border-t border-l border-[#E5E5E5] grid grid-cols-7 text-sm font-mono">
+        <div v-for="d in ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']" :key="d" class="p-2 border-r border-b border-[#E5E5E5] text-xs text-[#A3A3A3] text-center">
+          {{ d }}
+        </div>
+        <div v-for="blank in firstDayOfWeek" :key="'b-'+blank" class="h-20 border-r border-b border-[#E5E5E5] bg-[#F5F5F3]"></div>
         
-        <!-- 待辦事項 -->
-        <div class="space-y-4">
-          <h2 class="text-xs font-mono tracking-widest text-[#737373] uppercase">Tasks</h2>
-          <div class="flex border-b border-[#111111] pb-1">
-            <input 
-              v-model="newTodo" 
-              @keyup.enter="addTodo"
-              type="text" 
-              placeholder="Add new task..." 
-              class="w-full bg-transparent text-sm focus:outline-none placeholder-[#A3A3A3]"
-            >
-            <button @click="addTodo" class="text-xs font-mono hover:opacity-50">ADD</button>
+        <div 
+          v-for="day in daysInMonth" 
+          :key="day"
+          @click="openModal(day)"
+          :class="[
+            'h-20 p-2 border-r border-b border-[#E5E5E5] cursor-pointer transition flex flex-col justify-between',
+            getLog(day) ? 'bg-[#111111] text-white' : 'hover:bg-[#F0F0EE]'
+          ]"
+        >
+          <div class="flex justify-between items-start">
+            <span class="text-xs font-bold">{{ day }}</span>
+            <span v-if="getLog(day)" class="text-[10px] uppercase font-mono px-1 bg-[#333333] text-[#E5E5E5]">
+              {{ getStatusLabel(getLog(day).status) }}
+            </span>
           </div>
-          <ul class="space-y-2 text-sm">
-            <li 
-              v-for="todo in todos" 
-              :key="todo.id" 
-              class="flex items-center justify-between group py-1 border-b border-[#E5E5E5]"
-            >
-              <div class="flex items-center space-x-2">
-                <input type="checkbox" :checked="todo.is_completed" @change="toggleTodo(todo.id)" class="accent-[#111111] cursor-pointer">
-                <span :class="{'line-through text-[#A3A3A3]': todo.is_completed}">{{ todo.task }}</span>
-              </div>
-              <button @click="deleteTodo(todo.id)" class="opacity-0 group-hover:opacity-100 text-xs text-[#A3A3A3] hover:text-black">✕</button>
-            </li>
-          </ul>
-        </div>
-
-        <!-- 隨手筆記 -->
-        <div class="space-y-2">
-          <div class="flex justify-between items-center">
-            <h2 class="text-xs font-mono tracking-widest text-[#737373] uppercase">Scratchpad</h2>
-            <span class="text-[10px] font-mono text-[#A3A3A3]">{{ noteSaveStatus }}</span>
+          
+          <div v-if="getLog(day)" class="space-y-0.5">
+            <p v-if="getLog(day).location" class="text-[10px] text-[#A3A3A3] truncate">📍 {{ getLog(day).location }}</p>
+            <p class="text-[10px] font-mono text-[#E5E5E5]">+{{ currency }}{{ getLog(day).daily_pay }}</p>
           </div>
-          <textarea 
-            v-model="noteContent" 
-            @input="saveNoteDebounced"
-            rows="8" 
-            placeholder="Type notes here..."
-            class="w-full bg-[#F5F5F3] border border-[#E5E5E5] p-3 text-xs font-mono focus:outline-none focus:border-[#111111] resize-none"
-          ></textarea>
         </div>
-
-      </section>
-
+      </div>
     </main>
 
-    <!-- 薪資設定 Modal 彈窗 -->
-    <div v-if="showSettings" class="fixed inset-0 bg-black/20 flex items-center justify-center p-4">
-      <div class="bg-[#FAF9F6] border border-[#111111] p-6 max-w-sm w-full space-y-4 shadow-xl">
+    <!-- 工作編輯 Modal -->
+    <div v-if="selectedDay" class="fixed inset-0 bg-black/30 flex items-center justify-center p-4">
+      <div class="bg-[#FAF9F6] border border-[#111111] p-6 max-w-md w-full space-y-5 shadow-2xl">
         <div class="flex justify-between items-center border-b border-[#E5E5E5] pb-2">
-          <h3 class="text-xs font-mono tracking-widest uppercase text-[#737373]">Rate Settings</h3>
+          <h3 class="text-xs font-mono tracking-widest uppercase text-[#737373]">
+            MARK WORK - {{ formatDate(selectedDay) }}
+          </h3>
+          <button @click="selectedDay = null" class="text-xs font-mono hover:opacity-50">✕</button>
+        </div>
+
+        <div class="space-y-4 text-xs font-mono">
+          <div>
+            <label class="block text-[#737373] mb-2">WORK STATUS</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button 
+                v-for="(val, key) in statusOptions" 
+                :key="key"
+                @click="formStatus = key"
+                :class="[
+                  'p-2 border text-left transition',
+                  formStatus === key ? 'bg-[#111111] text-white border-[#111111]' : 'border-[#E5E5E5] hover:border-black'
+                ]"
+              >
+                <div class="font-bold">{{ val.label }}</div>
+                <div class="text-[10px] opacity-70">{{ val.desc }}</div>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[#737373] mb-1">LOCATION</label>
+            <input 
+              v-model="formLocation" 
+              type="text" 
+              placeholder="e.g. Office, Site A, Home"
+              class="w-full bg-[#F5F5F3] border border-[#E5E5E5] p-2 focus:outline-none focus:border-[#111111]"
+            >
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-2 border-t border-[#E5E5E5]">
+          <button @click="selectedDay = null" class="px-3 py-1.5 text-xs font-mono hover:opacity-50">CANCEL</button>
+          <button @click="saveWorkDay" class="px-4 py-1.5 bg-[#111111] text-white text-xs font-mono hover:bg-black">SAVE</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 預設薪資設定 Modal -->
+    <div v-if="showSettings" class="fixed inset-0 bg-black/30 flex items-center justify-center p-4">
+      <div class="bg-[#FAF9F6] border border-[#111111] p-6 max-w-sm w-full space-y-4 shadow-2xl">
+        <div class="flex justify-between items-center border-b border-[#E5E5E5] pb-2">
+          <h3 class="text-xs font-mono tracking-widest uppercase text-[#737373]">Base Settings</h3>
           <button @click="showSettings = false" class="text-xs font-mono hover:opacity-50">✕</button>
         </div>
         
         <div class="space-y-3 font-mono text-xs">
           <div>
-            <label class="block text-[#737373] mb-1">DAILY RATE</label>
+            <label class="block text-[#737373] mb-1">BASE DAILY RATE</label>
             <input 
               v-model.number="defaultRate" 
               type="number" 
@@ -174,12 +178,18 @@
         const defaultRate = ref(1500);
         const showSettings = ref(false);
 
-        const todos = ref([]);
-        const newTodo = ref('');
+        const selectedDay = ref(null);
+        const formStatus = ref('full');
+        const formLocation = ref('');
 
-        const noteContent = ref('');
-        const noteSaveStatus = ref('SAVED');
-        let noteTimeout = null;
+        const statusOptions = {
+          'off': { label: 'Off', desc: '0 Days / 0x Pay' },
+          'half': { label: 'Half Day', desc: '0.5 Days / 0.5x Pay' },
+          'full': { label: 'Full Day', desc: '1.0 Days / 1.0x Pay' },
+          'ot_1.5': { label: 'OT Standard', desc: '1.5 Days / 1.5x Pay' },
+          'ot_2.0': { label: 'OT Past 00:00', desc: '2.0 Days / 2.0x Pay' },
+          'ot_3.0': { label: 'OT Past 06:00', desc: '3.0 Days / 3.0x Pay' }
+        };
 
         const updateClock = () => {
           const now = new Date();
@@ -196,8 +206,29 @@
           return `${currentYear.value}-${m}-${d}`;
         };
 
-        const isWorked = (day) => logs.value[formatDate(day)]?.status === 'worked';
-        const getDailyPay = (day) => logs.value[formatDate(day)]?.daily_pay || defaultRate.value;
+        const getLog = (day) => logs.value[formatDate(day)];
+        const getStatusLabel = (key) => statusOptions[key]?.label || key;
+
+        const openModal = (day) => {
+          selectedDay.value = day;
+          const log = getLog(day);
+          formStatus.value = log ? log.status : 'full';
+          formLocation.value = log ? log.location : '';
+        };
+
+        const saveWorkDay = async () => {
+          await fetch('/api/work/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              date: formatDate(selectedDay.value),
+              status: formStatus.value,
+              location: formLocation.value
+            })
+          });
+          selectedDay.value = null;
+          loadMonthData();
+        };
 
         const loadSettings = async () => {
           const res = await fetch('/api/settings');
@@ -223,19 +254,6 @@
           summary.value = data.summary;
         };
 
-        const toggleDay = async (day) => {
-          const dateStr = formatDate(day);
-          const currentStatus = logs.value[dateStr]?.status;
-          const newStatus = currentStatus === 'worked' ? 'off' : 'worked';
-          
-          await fetch('/api/work/toggle', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ date: dateStr, status: newStatus, daily_pay: defaultRate.value })
-          });
-          loadMonthData();
-        };
-
         const changeMonth = (delta) => {
           currentMonth.value += delta;
           if (currentMonth.value > 12) { currentMonth.value = 1; currentYear.value++; }
@@ -243,61 +261,18 @@
           loadMonthData();
         };
 
-        const loadTodos = async () => {
-          const res = await fetch('/api/todos');
-          todos.value = await res.json();
-        };
-        const addTodo = async () => {
-          if (!newTodo.value.trim()) return;
-          await fetch('/api/todos', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ task: newTodo.value })
-          });
-          newTodo.value = '';
-          loadTodos();
-        };
-        const toggleTodo = async (id) => {
-          await fetch(`/api/todos/${id}/toggle`, { method: 'PUT' });
-          loadTodos();
-        };
-        const deleteTodo = async (id) => {
-          await fetch(`/api/todos/${id}`, { method: 'DELETE' });
-          loadTodos();
-        };
-
-        const loadNote = async () => {
-          const res = await fetch('/api/note');
-          const data = await res.json();
-          noteContent.value = data.content;
-        };
-        const saveNoteDebounced = () => {
-          noteSaveStatus.value = 'SAVING...';
-          clearTimeout(noteTimeout);
-          noteTimeout = setTimeout(async () => {
-            await fetch('/api/note', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ content: noteContent.value })
-            });
-            noteSaveStatus.value = 'SAVED';
-          }, 800);
-        };
-
         onMounted(() => {
           updateClock();
           setInterval(updateClock, 1000);
           loadSettings();
           loadMonthData();
-          loadTodos();
-          loadNote();
         });
 
         return {
           currentTime, currentDate, currentYear, currentMonth, daysInMonth, firstDayOfWeek,
-          summary, currency, defaultRate, showSettings, saveSettings, toggleDay, isWorked, getDailyPay, changeMonth,
-          todos, newTodo, addTodo, toggleTodo, deleteTodo,
-          noteContent, noteSaveStatus, saveNoteDebounced
+          summary, currency, defaultRate, showSettings, saveSettings, changeMonth,
+          selectedDay, formStatus, formLocation, statusOptions, openModal, saveWorkDay,
+          formatDate, getLog, getStatusLabel
         };
       }
     }).mount('#app');
