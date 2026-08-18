@@ -1,0 +1,17 @@
+{
+  "short_name": "WorkTracker",
+  "name": "Work & Salary Tracker",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/1063/1063376.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#FAF9F6",
+  "theme_color": "#FAF9F6",
+  "display": "standalone",
+  "orientation": "portrait"
+}
