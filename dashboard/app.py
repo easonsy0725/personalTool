@@ -17,7 +17,7 @@ app.add_middleware(
 
 DB_FILE = "data/dashboard.db"
 
-# 出勤型態與對應倍率設定
+# Work status types and corresponding working day & salary multipliers
 WORK_TYPES = {
     "off": {"days": 0.0, "multiplier": 0.0, "label": "Off"},
     "half": {"days": 0.5, "multiplier": 0.5, "label": "Half Day"},
@@ -31,23 +31,38 @@ def init_db():
     os.makedirs("data", exist_ok=True)
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
+    
+    # Create settings table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         )
     """)
+    
+    # Create work_logs table if not exists
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS work_logs (
             date TEXT PRIMARY KEY,
             status TEXT NOT NULL,
             daily_pay REAL NOT NULL,
-            work_days REAL NOT NULL,
+            work_days REAL NOT NULL DEFAULT 1.0,
             location TEXT DEFAULT ''
         )
     """)
+    
+    # Auto-migration: Ensure columns exist for upgraded SQLite databases
+    cursor.execute("PRAGMA table_info(work_logs)")
+    columns = [column[1] for column in cursor.fetchall()]
+    if "work_days" not in columns:
+        cursor.execute("ALTER TABLE work_logs ADD COLUMN work_days REAL DEFAULT 1.0")
+    if "location" not in columns:
+        cursor.execute("ALTER TABLE work_logs ADD COLUMN location TEXT DEFAULT ''")
+
+    # Insert default settings if they do not exist
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('default_daily_rate', '1500')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('currency', '$')")
+    
     conn.commit()
     conn.close()
 
@@ -87,10 +102,21 @@ def get_monthly_work(year: int, month: int):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    cursor.execute("SELECT date, status, daily_pay, work_days, location FROM work_logs WHERE date LIKE ?", (f"{month_str}%",))
+    cursor.execute(
+        "SELECT date, status, daily_pay, work_days, location FROM work_logs WHERE date LIKE ?", 
+        (f"{month_str}%",)
+    )
     rows = cursor.fetchall()
     
-    logs = {r[0]: {"status": r[1], "daily_pay": r[2], "work_days": r[3], "location": r[4]} for r in rows}
+    logs = {
+        r[0]: {
+            "status": r[1],
+            "daily_pay": r[2],
+            "work_days": r[3],
+            "location": r[4] if r[4] else ""
+        } 
+        for r in rows
+    }
     
     cursor.execute("""
         SELECT SUM(work_days), SUM(daily_pay)
@@ -115,7 +141,8 @@ def update_work_day(data: WorkLogSchema):
     cursor = conn.cursor()
     
     cursor.execute("SELECT value FROM settings WHERE key = 'default_daily_rate'")
-    base_rate = float(cursor.fetchone()[0])
+    row = cursor.fetchone()
+    base_rate = float(row[0]) if row else 1500.0
     
     rule = WORK_TYPES.get(data.status, WORK_TYPES["off"])
     
@@ -124,6 +151,7 @@ def update_work_day(data: WorkLogSchema):
     else:
         calculated_pay = base_rate * rule["multiplier"]
         work_days = rule["days"]
+        location_val = data.location.strip() if data.location else ""
         
         cursor.execute("""
             INSERT INTO work_logs (date, status, daily_pay, work_days, location)
@@ -133,10 +161,11 @@ def update_work_day(data: WorkLogSchema):
                 daily_pay = excluded.daily_pay,
                 work_days = excluded.work_days,
                 location = excluded.location
-        """, (data.date, data.status, calculated_pay, work_days, data.location))
+        """, (data.date, data.status, calculated_pay, work_days, location_val))
     
     conn.commit()
     conn.close()
     return {"status": "success"}
 
+# Serve static files for the frontend
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
