@@ -61,17 +61,17 @@
           @click="openModal(day)"
           :class="[
             'h-20 p-2 border-r border-b border-[#E5E5E5] cursor-pointer transition flex flex-col justify-between',
-            getLog(day) ? 'bg-[#111111] text-white' : 'hover:bg-[#F0F0EE]'
+            isWorkedDay(day) ? 'bg-[#111111] text-white' : 'hover:bg-[#F0F0EE]'
           ]"
         >
           <div class="flex justify-between items-start">
             <span class="text-xs font-bold">{{ day }}</span>
-            <span v-if="getLog(day)" class="text-[10px] uppercase font-mono px-1 bg-[#333333] text-[#E5E5E5]">
+            <span v-if="isWorkedDay(day)" class="text-[10px] uppercase font-mono px-1 bg-[#333333] text-[#E5E5E5]">
               {{ getStatusLabel(getLog(day).status) }}
             </span>
           </div>
           
-          <div v-if="getLog(day)" class="space-y-0.5">
+          <div v-if="isWorkedDay(day)" class="space-y-0.5">
             <p v-if="getLog(day).location" class="text-[10px] text-[#A3A3A3] truncate">📍 {{ getLog(day).location }}</p>
             <p class="text-[10px] font-mono text-[#E5E5E5]">+{{ currency }}{{ getLog(day).daily_pay }}</p>
           </div>
@@ -207,13 +207,17 @@
         };
 
         const getLog = (day) => logs.value[formatDate(day)];
+        const isWorkedDay = (day) => {
+          const log = getLog(day);
+          return log && log.status !== 'off';
+        };
         const getStatusLabel = (key) => statusOptions[key]?.label || key;
 
         const openModal = (day) => {
           selectedDay.value = day;
           const log = getLog(day);
-          formStatus.value = log ? log.status : 'full';
-          formLocation.value = log ? log.location : '';
+          formStatus.value = (log && log.status) ? log.status : 'full';
+          formLocation.value = (log && log.location) ? log.location : '';
         };
 
         const saveWorkDay = async () => {
@@ -272,7 +276,7 @@
           currentTime, currentDate, currentYear, currentMonth, daysInMonth, firstDayOfWeek,
           summary, currency, defaultRate, showSettings, saveSettings, changeMonth,
           selectedDay, formStatus, formLocation, statusOptions, openModal, saveWorkDay,
-          formatDate, getLog, getStatusLabel
+          formatDate, getLog, isWorkedDay, getStatusLabel
         };
       }
     }).mount('#app');
