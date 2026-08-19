@@ -223,15 +223,28 @@ def get_settings(user_info: dict = Depends(get_current_user_info)):
 def update_settings(data: SettingsSchema, user_info: dict = Depends(get_current_user_info)):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
+    
+    # 1. Update global base settings
     cursor.execute("UPDATE settings SET value = ? WHERE key = 'default_daily_rate'", (str(data.default_daily_rate),))
     cursor.execute("UPDATE settings SET value = ? WHERE key = 'currency'", (data.currency,))
     
-    cursor.execute("SELECT username, date, status FROM work_logs WHERE status != 'off'")
+    # 2. Recalculate daily pay ONLY for the currently active user (or the admin's logged-in account)
+    # This prevents updating work logs belonging to other users.
+    active_user = user_info["username"]
+    
+    cursor.execute(
+        "SELECT date, status FROM work_logs WHERE username = ? AND status != 'off'", 
+        (active_user,)
+    )
     rows = cursor.fetchall()
-    for u_name, d_date, d_status in rows:
+    
+    for d_date, d_status in rows:
         rule = WORK_TYPES.get(d_status, WORK_TYPES["off"])
         new_pay = data.default_daily_rate * rule["multiplier"]
-        cursor.execute("UPDATE work_logs SET daily_pay = ? WHERE username = ? AND date = ?", (new_pay, u_name, d_date))
+        cursor.execute(
+            "UPDATE work_logs SET daily_pay = ? WHERE username = ? AND date = ?", 
+            (new_pay, active_user, d_date)
+        )
 
     conn.commit()
     conn.close()
