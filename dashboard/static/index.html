@@ -27,13 +27,22 @@
       </div>
     </header>
 
-    <!-- Admin Switcher Bar -->
+    <!-- Admin Switcher & Action Bar -->
     <div v-if="isAdmin" class="bg-[#EAEAEA] p-2 border border-[#CCCCCC] font-mono text-xs flex items-center justify-between">
-      <span class="font-bold text-[#333]">MANAGE USER DATA:</span>
-      <select v-model="targetUser" @change="loadMonthData" class="bg-white border p-1 text-xs">
-        <option :value="currentUser">Self ({{ currentUser }})</option>
-        <option v-for="u in userList" :key="u" :value="u">{{ u }}</option>
-      </select>
+      <div class="flex items-center space-x-2">
+        <span class="font-bold text-[#333]">MANAGE USER:</span>
+        <select v-model="targetUser" @change="loadMonthData" class="bg-white border p-1 text-xs">
+          <option :value="currentUser">Self ({{ currentUser }})</option>
+          <option v-for="u in userList" :key="u" :value="u">{{ u }}</option>
+        </select>
+      </div>
+      <button 
+        v-if="targetUser && targetUser !== currentUser" 
+        @click="deleteUser(targetUser)" 
+        class="bg-red-600 text-white px-2 py-1 text-[10px] font-bold hover:bg-red-700"
+      >
+        DELETE {{ targetUser }}
+      </button>
     </div>
 
     <!-- Calendar Controls -->
@@ -249,6 +258,13 @@
           }
         };
 
+        const fetchUsersList = async () => {
+          if (isAdmin.value) {
+            const uRes = await fetch('/api/admin/users');
+            if (uRes.ok) userList.value = await uRes.json();
+          }
+        };
+
         const fetchMe = async () => {
           const res = await fetch('/api/me');
           if (checkAuth(res)) {
@@ -256,10 +272,27 @@
             currentUser.value = data.username;
             isAdmin.value = data.is_admin;
             targetUser.value = data.username;
+            await fetchUsersList();
+          }
+        };
 
-            if (isAdmin.value) {
-              const uRes = await fetch('/api/admin/users');
-              if (uRes.ok) userList.value = await uRes.json();
+        const deleteUser = async (username) => {
+          if (!confirm(`Are you sure you want to permanently delete user "${username}" and all associated work logs?`)) return;
+          
+          const res = await fetch('/api/admin/users/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_user: username })
+          });
+          if (checkAuth(res)) {
+            if (res.ok) {
+              alert(`User ${username} deleted.`);
+              targetUser.value = currentUser.value;
+              await fetchUsersList();
+              await loadMonthData();
+            } else {
+              const err = await res.json();
+              alert(err.detail || "Delete failed");
             }
           }
         };
@@ -298,7 +331,8 @@
         };
 
         const loadMonthData = async () => {
-          const url = `/api/work/${currentYear.value}/${currentMonth.value}?target_user=${targetUser.value}&t=${Date.now()}`;
+          const uParam = targetUser.value || currentUser.value;
+          const url = `/api/work/${currentYear.value}/${currentMonth.value}?target_user=${uParam}&t=${Date.now()}`;
           const res = await fetch(url);
           if (checkAuth(res)) {
             const data = await res.json();
@@ -331,7 +365,7 @@
           summary, currency, defaultRate, showSettings, saveSettings, changeMonth,
           selectedDay, formStatus, formLocation, statusOptions, openModal, saveWorkDay,
           formatDate, getLog, isWorkedDay, getStatusLabel, logout, loadMonthData,
-          showAdminSummary, adminSummaryData, openAdminSummary
+          showAdminSummary, adminSummaryData, openAdminSummary, deleteUser
         };
       }
     }).mount('#app');

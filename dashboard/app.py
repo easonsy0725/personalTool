@@ -52,7 +52,6 @@ def init_db():
         )
     """)
     
-    # 資料庫移轉/建立：包含 username 欄位
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS work_logs (
             username TEXT NOT NULL,
@@ -65,7 +64,6 @@ def init_db():
         )
     """)
     
-    # 預設設定與 Admin 帳號 (預設密碼: admin123)
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('default_daily_rate', '700')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('currency', '$')")
     
@@ -88,6 +86,9 @@ class WorkLogSchema(BaseModel):
     status: str
     location: Optional[str] = ""
     target_user: Optional[str] = None
+
+class DeleteUserSchema(BaseModel):
+    target_user: str
 
 class SettingsSchema(BaseModel):
     default_daily_rate: float
@@ -114,7 +115,7 @@ def get_current_user_info(request: Request):
 def register(data: AuthSchema):
     username = data.username.strip()
     if not username or not data.password:
-        raise HTTPException(status_code=400, detail="請填寫帳號與密碼")
+        raise HTTPException(status_code=400, detail="Please enter username and password")
         
     hashed_pwd = pwd_context.hash(data.password)
     conn = sqlite3.connect(DB_FILE)
@@ -124,10 +125,10 @@ def register(data: AuthSchema):
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
-        raise HTTPException(status_code=400, detail="帳號已被註冊")
+        raise HTTPException(status_code=400, detail="Username already exists")
     
     conn.close()
-    return {"status": "success", "message": "註冊成功"}
+    return {"status": "success"}
 
 @app.post("/api/login")
 def login(data: AuthSchema, response: Response):
@@ -138,7 +139,7 @@ def login(data: AuthSchema, response: Response):
     
     if not row or not pwd_context.verify(data.password, row[0]):
         conn.close()
-        raise HTTPException(status_code=401, detail="帳號或密碼錯誤")
+        raise HTTPException(status_code=401, detail="Invalid username or password")
     
     session_token = secrets.token_hex(32)
     cursor.execute("UPDATE users SET session_token = ? WHERE username = ?", (session_token, data.username.strip()))
@@ -169,6 +170,23 @@ def get_all_users(user_info: dict = Depends(get_current_user_info)):
     users = [row[0] for row in cursor.fetchall()]
     conn.close()
     return users
+
+@app.post("/api/admin/users/delete")
+def delete_user(data: DeleteUserSchema, user_info: dict = Depends(get_current_user_info)):
+    if not user_info["is_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    target = data.target_user.strip()
+    if target == "admin":
+        raise HTTPException(status_code=400, detail="Cannot delete admin account")
+        
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users WHERE username = ?", (target,))
+    cursor.execute("DELETE FROM work_logs WHERE username = ?", (target,))
+    conn.commit()
+    conn.close()
+    return {"status": "success"}
 
 @app.get("/api/admin/summary/{year}/{month}")
 def get_admin_summary(year: int, month: int, user_info: dict = Depends(get_current_user_info)):
@@ -221,9 +239,8 @@ def update_settings(data: SettingsSchema, user_info: dict = Depends(get_current_
 
 @app.get("/api/work/{year}/{month}")
 def get_monthly_work(year: int, month: int, target_user: Optional[str] = None, user_info: dict = Depends(get_current_user_info)):
-    # 普通使用者只能看自己的資料；Admin 可指定 target_user
     active_user = user_info["username"]
-    if user_info["is_admin"] and target_user:
+    if user_info["is_admin"] and target_user and target_user != "null":
         active_user = target_user
 
     month_str = f"{year:04d}-{month:02d}"
