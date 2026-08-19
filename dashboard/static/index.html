@@ -4,20 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Work & Salary Tracker</title>
-  
-  <!-- PWA & 全螢幕設定 -->
   <link rel="manifest" href="/manifest.json">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Work Tracker">
-  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1063/1063376.png">
-
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-  <style>
-    * { box-sizing: border-box; }
-  </style>
 </head>
 <body class="bg-[#FAF9F6] text-[#191919] min-h-screen p-2 sm:p-8 font-sans antialiased">
   <div id="app" class="max-w-4xl mx-auto space-y-4">
@@ -26,17 +15,26 @@
     <header class="flex justify-between items-baseline border-b border-[#E5E5E5] pb-3">
       <div>
         <h1 class="text-lg sm:text-3xl font-semibold tracking-tight text-[#111111]">Work & Salary Tracker</h1>
-        <p class="text-[10px] sm:text-xs text-[#737373] font-mono uppercase">{{ currentTime }} | {{ currentDate }}</p>
+        <p class="text-[10px] sm:text-xs text-[#737373] font-mono uppercase">
+          USER: <span class="text-black font-bold">{{ currentUser }}</span>
+          <span v-if="isAdmin" class="ml-2 bg-black text-white px-1 text-[9px]">ADMIN</span>
+        </p>
       </div>
       <div class="flex items-center space-x-3 font-mono text-xs">
-        <button @click="showSettings = true" class="text-[#737373] hover:text-black">
-          [SETTINGS]
-        </button>
-        <button @click="logout" class="text-red-500 hover:underline">
-          [LOGOUT]
-        </button>
+        <button v-if="isAdmin" @click="openAdminSummary" class="text-blue-600 font-bold hover:underline">[ALL SUMMARY]</button>
+        <button @click="showSettings = true" class="text-[#737373] hover:text-black">[SETTINGS]</button>
+        <button @click="logout" class="text-red-500 hover:underline">[LOGOUT]</button>
       </div>
     </header>
+
+    <!-- Admin Switcher Bar -->
+    <div v-if="isAdmin" class="bg-[#EAEAEA] p-2 border border-[#CCCCCC] font-mono text-xs flex items-center justify-between">
+      <span class="font-bold text-[#333]">MANAGE USER DATA:</span>
+      <select v-model="targetUser" @change="loadMonthData" class="bg-white border p-1 text-xs">
+        <option :value="currentUser">Self ({{ currentUser }})</option>
+        <option v-for="u in userList" :key="u" :value="u">{{ u }}</option>
+      </select>
+    </div>
 
     <!-- Calendar Controls -->
     <main class="space-y-3">
@@ -91,7 +89,7 @@
     <div v-if="selectedDay" class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
       <div class="bg-[#FAF9F6] border border-[#111111] p-4 max-w-md w-full space-y-3">
         <div class="flex justify-between items-center border-b pb-2">
-          <h3 class="text-xs font-mono text-[#737373]">MARK WORK - {{ formatDate(selectedDay) }}</h3>
+          <h3 class="text-xs font-mono text-[#737373]">MARK WORK ({{ targetUser || currentUser }}) - {{ formatDate(selectedDay) }}</h3>
           <button @click="selectedDay = null">✕</button>
         </div>
         <div class="grid grid-cols-2 gap-2 text-xs font-mono">
@@ -110,6 +108,35 @@
           <button @click="selectedDay = null" class="px-3 py-1 text-xs">CANCEL</button>
           <button @click="saveWorkDay" class="px-3 py-1 bg-[#111111] text-white text-xs">SAVE</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Admin All Summary Modal -->
+    <div v-if="showAdminSummary" class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+      <div class="bg-[#FAF9F6] border border-[#111111] p-4 max-w-md w-full space-y-3 font-mono text-xs">
+        <div class="flex justify-between items-center border-b pb-2">
+          <h3 class="font-bold text-black">ALL USERS SUMMARY ({{ currentYear }}/{{ currentMonth }})</h3>
+          <button @click="showAdminSummary = false">✕</button>
+        </div>
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b text-[#737373]">
+              <th class="p-1">USER</th>
+              <th class="p-1">DAYS</th>
+              <th class="p-1">TOTAL PAY</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in adminSummaryData" :key="item.username" class="border-b">
+              <td class="p-1 font-bold">{{ item.username }}</td>
+              <td class="p-1">{{ item.total_working_days }}</td>
+              <td class="p-1">{{ currency }}{{ item.total_salary.toLocaleString() }}</td>
+            </tr>
+            <tr v-if="adminSummaryData.length === 0">
+              <td colspan="3" class="p-2 text-center text-[#737373]">No data for this month</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -144,8 +171,11 @@
 
     createApp({
       setup() {
-        const currentTime = ref('');
-        const currentDate = ref('');
+        const currentUser = ref('');
+        const isAdmin = ref(false);
+        const userList = ref([]);
+        const targetUser = ref('');
+
         const currentYear = ref(new Date().getFullYear());
         const currentMonth = ref(new Date().getMonth() + 1);
         
@@ -154,6 +184,9 @@
         const currency = ref('$');
         const defaultRate = ref(700);
         const showSettings = ref(false);
+        
+        const showAdminSummary = ref(false);
+        const adminSummaryData = ref([]);
 
         const selectedDay = ref(null);
         const formStatus = ref('full');
@@ -174,12 +207,6 @@
             return false;
           }
           return true;
-        };
-
-        const updateClock = () => {
-          const now = new Date();
-          currentTime.value = now.toLocaleTimeString('en-US', { hour12: false });
-          currentDate.value = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
         };
 
         const daysInMonth = computed(() => new Date(currentYear.value, currentMonth.value, 0).getDate());
@@ -212,12 +239,36 @@
             body: JSON.stringify({
               date: formatDate(selectedDay.value),
               status: formStatus.value,
-              location: formLocation.value
+              location: formLocation.value,
+              target_user: targetUser.value || currentUser.value
             })
           });
           if (checkAuth(res)) {
             selectedDay.value = null;
             await loadMonthData();
+          }
+        };
+
+        const fetchMe = async () => {
+          const res = await fetch('/api/me');
+          if (checkAuth(res)) {
+            const data = await res.json();
+            currentUser.value = data.username;
+            isAdmin.value = data.is_admin;
+            targetUser.value = data.username;
+
+            if (isAdmin.value) {
+              const uRes = await fetch('/api/admin/users');
+              if (uRes.ok) userList.value = await uRes.json();
+            }
+          }
+        };
+
+        const openAdminSummary = async () => {
+          const res = await fetch(`/api/admin/summary/${currentYear.value}/${currentMonth.value}`);
+          if (res.ok) {
+            adminSummaryData.value = await res.json();
+            showAdminSummary.value = true;
           }
         };
 
@@ -247,7 +298,8 @@
         };
 
         const loadMonthData = async () => {
-          const res = await fetch(`/api/work/${currentYear.value}/${currentMonth.value}?t=${Date.now()}`);
+          const url = `/api/work/${currentYear.value}/${currentMonth.value}?target_user=${targetUser.value}&t=${Date.now()}`;
+          const res = await fetch(url);
           if (checkAuth(res)) {
             const data = await res.json();
             logs.value = data.logs;
@@ -268,17 +320,18 @@
         };
 
         onMounted(async () => {
-          updateClock();
-          setInterval(updateClock, 1000);
+          await fetchMe();
           await loadSettings();
           await loadMonthData();
         });
 
         return {
-          currentTime, currentDate, currentYear, currentMonth, daysInMonth, firstDayOfWeek,
+          currentUser, isAdmin, userList, targetUser,
+          currentYear, currentMonth, daysInMonth, firstDayOfWeek,
           summary, currency, defaultRate, showSettings, saveSettings, changeMonth,
           selectedDay, formStatus, formLocation, statusOptions, openModal, saveWorkDay,
-          formatDate, getLog, isWorkedDay, getStatusLabel, logout
+          formatDate, getLog, isWorkedDay, getStatusLabel, logout, loadMonthData,
+          showAdminSummary, adminSummaryData, openAdminSummary
         };
       }
     }).mount('#app');
