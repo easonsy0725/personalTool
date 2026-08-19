@@ -28,9 +28,14 @@
         <h1 class="text-lg sm:text-3xl font-semibold tracking-tight text-[#111111]">Work & Salary Tracker</h1>
         <p class="text-[10px] sm:text-xs text-[#737373] font-mono uppercase">{{ currentTime }} | {{ currentDate }}</p>
       </div>
-      <button @click="showSettings = true" class="text-xs font-mono text-[#737373] hover:text-black">
-        [SETTINGS]
-      </button>
+      <div class="flex items-center space-x-3 font-mono text-xs">
+        <button @click="showSettings = true" class="text-[#737373] hover:text-black">
+          [SETTINGS]
+        </button>
+        <button @click="logout" class="text-red-500 hover:underline">
+          [LOGOUT]
+        </button>
+      </div>
     </header>
 
     <!-- Calendar Controls -->
@@ -163,6 +168,14 @@
           'ot_3.0': { label: 'OT Past 06:00', shortLabel: 'OT 3.0x', desc: '3.0x Pay' }
         };
 
+        const checkAuth = (res) => {
+          if (res.status === 401) {
+            window.location.href = '/login.html';
+            return false;
+          }
+          return true;
+        };
+
         const updateClock = () => {
           const now = new Date();
           currentTime.value = now.toLocaleTimeString('en-US', { hour12: false });
@@ -193,7 +206,7 @@
         };
 
         const saveWorkDay = async () => {
-          await fetch('/api/work/update', {
+          const res = await fetch('/api/work/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -202,19 +215,23 @@
               location: formLocation.value
             })
           });
-          selectedDay.value = null;
-          await loadMonthData();
+          if (checkAuth(res)) {
+            selectedDay.value = null;
+            await loadMonthData();
+          }
         };
 
         const loadSettings = async () => {
           const res = await fetch('/api/settings');
-          const data = await res.json();
-          if (data.default_daily_rate) defaultRate.value = parseFloat(data.default_daily_rate);
-          if (data.currency) currency.value = data.currency;
+          if (checkAuth(res)) {
+            const data = await res.json();
+            if (data.default_daily_rate) defaultRate.value = parseFloat(data.default_daily_rate);
+            if (data.currency) currency.value = data.currency;
+          }
         };
 
         const saveSettings = async () => {
-          await fetch('/api/settings', {
+          const res = await fetch('/api/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
@@ -222,16 +239,25 @@
               currency: currency.value 
             })
           });
-          showSettings.value = false;
-          await loadSettings();
-          await loadMonthData();
+          if (checkAuth(res)) {
+            showSettings.value = false;
+            await loadSettings();
+            await loadMonthData();
+          }
         };
 
         const loadMonthData = async () => {
           const res = await fetch(`/api/work/${currentYear.value}/${currentMonth.value}?t=${Date.now()}`);
-          const data = await res.json();
-          logs.value = data.logs;
-          summary.value = data.summary;
+          if (checkAuth(res)) {
+            const data = await res.json();
+            logs.value = data.logs;
+            summary.value = data.summary;
+          }
+        };
+
+        const logout = async () => {
+          await fetch('/api/logout', { method: 'POST' });
+          window.location.href = '/login.html';
         };
 
         const changeMonth = (delta) => {
@@ -252,7 +278,7 @@
           currentTime, currentDate, currentYear, currentMonth, daysInMonth, firstDayOfWeek,
           summary, currency, defaultRate, showSettings, saveSettings, changeMonth,
           selectedDay, formStatus, formLocation, statusOptions, openModal, saveWorkDay,
-          formatDate, getLog, isWorkedDay, getStatusLabel
+          formatDate, getLog, isWorkedDay, getStatusLabel, logout
         };
       }
     }).mount('#app');
