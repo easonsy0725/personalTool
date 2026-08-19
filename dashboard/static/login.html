@@ -10,29 +10,28 @@
   <div class="bg-white border border-[#111111] p-6 max-w-sm w-full space-y-4 shadow-sm">
     <h2 id="title" class="text-base font-bold text-center font-mono tracking-wider">ACCOUNT LOGIN</h2>
     
-    <form id="authForm" class="space-y-3 font-mono text-xs">
+    <form id="authForm" onsubmit="return false;" class="space-y-3 font-mono text-xs">
       <div>
         <label class="block text-[#737373] mb-1">USERNAME</label>
-        <input type="text" id="username" required class="w-full bg-[#F5F5F3] border border-[#E5E5E5] p-2 outline-none">
+        <input type="text" id="username" autocomplete="username" required class="w-full bg-[#F5F5F3] border border-[#E5E5E5] p-2 outline-none">
       </div>
       <div>
         <label class="block text-[#737373] mb-1">PASSWORD</label>
-        <input type="password" id="password" required class="w-full bg-[#F5F5F3] border border-[#E5E5E5] p-2 outline-none">
+        <input type="password" id="password" autocomplete="current-password" required class="w-full bg-[#F5F5F3] border border-[#E5E5E5] p-2 outline-none">
       </div>
       
-      <div id="msg" class="text-red-500 text-[10px] hidden"></div>
+      <div id="msg" class="text-red-500 text-[10px] hidden font-mono"></div>
       
-      <button type="submit" id="submitBtn" class="w-full bg-[#111111] text-white py-2 font-bold hover:opacity-90 transition">LOGIN</button>
+      <button type="button" id="submitBtn" class="w-full bg-[#111111] text-white py-2 font-bold hover:opacity-90 transition">LOGIN</button>
     </form>
 
     <div class="text-center pt-2 border-t font-mono text-[10px]">
-      <button id="toggleBtn" class="text-[#737373] underline">沒有帳號？點此註冊</button>
+      <button type="button" id="toggleBtn" class="text-[#737373] underline">沒有帳號？點此註冊</button>
     </div>
   </div>
 
   <script>
     let isRegister = false;
-    const authForm = document.getElementById('authForm');
     const toggleBtn = document.getElementById('toggleBtn');
     const title = document.getElementById('title');
     const submitBtn = document.getElementById('submitBtn');
@@ -46,30 +45,49 @@
       msg.classList.add('hidden');
     });
 
-    authForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const username = document.getElementById('username').value;
-      const password = document.getElementById('password').value;
+    submitBtn.addEventListener('click', async () => {
+      const usernameInput = document.getElementById('username').value.trim();
+      const passwordInput = document.getElementById('password').value.trim();
+
+      if (!usernameInput || !passwordInput) {
+        msg.innerText = '請輸入帳號與密碼';
+        msg.classList.remove('hidden');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'PROCESSING...';
+      msg.classList.add('hidden');
+
       const endpoint = isRegister ? '/api/register' : '/api/login';
 
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: usernameInput, password: passwordInput })
+        });
 
-      const data = await res.json();
+        const data = await res.json();
 
-      if (res.ok) {
-        if (isRegister) {
-          alert('註冊成功！請直接登入');
-          toggleBtn.click();
+        if (res.ok) {
+          if (isRegister) {
+            alert('註冊成功！請直接登入');
+            toggleBtn.click();
+            document.getElementById('password').value = '';
+          } else {
+            window.location.href = '/';
+          }
         } else {
-          window.location.href = '/';
+          msg.innerText = data.detail || '操作失敗';
+          msg.classList.remove('hidden');
         }
-      } else {
-        msg.innerText = data.detail || '發生物件錯誤';
+      } catch (err) {
+        msg.innerText = '網路連線失敗，請稍後再試';
         msg.classList.remove('hidden');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = isRegister ? 'REGISTER' : 'LOGIN';
       }
     });
   </script>

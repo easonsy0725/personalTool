@@ -120,7 +120,8 @@ def register(data: AuthSchema):
     
     conn.close()
     return {"status": "success", "message": "註冊成功"}
-
+    
+第三步：更新與清空快取
 @app.post("/api/login")
 def login(data: AuthSchema, response: Response):
     conn = sqlite3.connect(DB_FILE)
