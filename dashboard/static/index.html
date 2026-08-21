@@ -144,11 +144,11 @@
             <button v-if="editingLogId" @click="resetForm" class="text-[10px] text-gray-500 underline">取消編輯</button>
           </div>
 
-          <!-- 若設定多家公司，顯示選單；若僅一家公司，隱藏選單（自動預設） -->
-          <div v-if="userSettings.companies && userSettings.companies.length > 1">
-            <label class="block text-[10px] text-[#737373] mb-1">選擇公司</label>
-            <select v-model="formCompany" class="w-full bg-white border p-1.5 text-xs">
-              <option v-for="comp in userSettings.companies" :key="comp" :value="comp">{{ comp }}</option>
+          <!-- 公司選擇區區塊：編輯模式下必定顯示，新增模式下若有多家公司時顯示 -->
+          <div v-if="editingLogId || (userSettings.companies && userSettings.companies.length > 1)">
+            <label class="block text-[10px] text-[#737373] mb-1">選擇任職公司</label>
+            <select v-model="formCompany" class="w-full bg-white border p-1.5 text-xs font-bold">
+              <option v-for="comp in availableCompanies" :key="comp" :value="comp">{{ comp }}</option>
             </select>
           </div>
 
@@ -197,7 +197,7 @@
 
           <div>
             <label class="block text-[10px] text-[#737373]">工作地點 / 備註</label>
-            <input v-model="formLocation" placeholder="例如：公司" class="w-full bg-white border p-1.5 text-xs">
+            <input v-model="formLocation" placeholder="例如：台北辦公室" class="w-full bg-white border p-1.5 text-xs">
           </div>
 
           <div class="flex justify-end space-x-2 pt-2">
@@ -299,6 +299,15 @@
           'ot_2.0': { label: '加班 2.0x' },
           'ot_3.0': { label: '加班 3.0x' }
         };
+
+        // 動態計算可選公司列表（合併目前設定的公司與紀錄中的舊公司名稱）
+        const availableCompanies = computed(() => {
+          const comps = [...(userSettings.value.companies || ['預設公司'])];
+          if (formCompany.value && !comps.includes(formCompany.value)) {
+            comps.push(formCompany.value);
+          }
+          return Array.from(new Set(comps));
+        });
 
         // 格式化時間 (需求：<24h 不顯示 days；例 19days 23hour 59mins)
         const formatDuration = (totalDecimalHours) => {
@@ -462,7 +471,7 @@
         };
 
         const saveSettings = async () => {
-          const validCompanies = settingsCompanies.value.map(c => c.strip ? c.strip() : c).filter(c => c);
+          const validCompanies = settingsCompanies.value.map(c => typeof c === 'string' ? c.trim() : c).filter(c => c);
           const res = await fetch('/api/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -514,7 +523,7 @@
           currentUser, isAdmin, userList, targetUser, onTargetUserChange,
           currentYear, currentMonth, daysInMonth, firstDayOfWeek,
           summary, userSettings, settingsCompanies, showSettings, saveSettings, changeMonth,
-          addCompanyInput, removeCompanyInput, formatDuration,
+          addCompanyInput, removeCompanyInput, formatDuration, availableCompanies,
           selectedDay, openDayModal, dayLogs, editingLogId, resetForm, editLogItem, deleteLogItem,
           formCompany, formPayMode, formStatus, formRate, formHours, formLocation, saveWorkItem,
           statusOptions, formatDate, getLogs, getStatusLabel, logout, loadMonthData, deleteUser
