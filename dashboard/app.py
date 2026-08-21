@@ -123,7 +123,8 @@ def get_users():
     if session.get('role') not in ['admin', 'accounting']:
         return jsonify([])
     with get_db() as conn:
-        users = conn.execute("SELECT username FROM users WHERE role = 'employee'").fetchall()
+        # 抓出系統內所有使用者，包含 admin 自身
+        users = conn.execute("SELECT username FROM users").fetchall()
         return jsonify([u['username'] for u in users])
 
 # --- 工時紀錄 API ---
@@ -135,24 +136,20 @@ def get_work_logs(year, month):
     user_company = session.get('company')
     target_user = request.args.get('target_user', current_user)
     
-    if user_role == 'employee' and target_user != current_user:
+    # 一般員工只能看自己的資料
+    if user_role == 'employee':
         target_user = current_user
 
     month_str = f"{year}-{month:02d}"
     
     with get_db() as conn:
-        if user_role == 'accounting':
-            # 會計帳號僅讀取該公司且屬於會計修改層 (source='accounting') 或該公司的員工申報
-            query = """
-                SELECT * FROM work_logs 
-                WHERE username = ? AND date LIKE ? AND company = ?
-            """
+        if user_role == 'accounting' and user_company:
+            # 會計權限：抓取該公司的資料
+            query = "SELECT * FROM work_logs WHERE username = ? AND date LIKE ? AND company = ?"
             rows = conn.execute(query, (target_user, f"{month_str}%", user_company)).fetchall()
         else:
-            query = """
-                SELECT * FROM work_logs 
-                WHERE username = ? AND date LIKE ? AND source = 'employee'
-            """
+            # 管理員或一般員工：直接抓取對應使用者的所有工時紀錄
+            query = "SELECT * FROM work_logs WHERE username = ? AND date LIKE ?"
             rows = conn.execute(query, (target_user, f"{month_str}%")).fetchall()
 
         logs = {}
