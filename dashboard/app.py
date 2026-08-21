@@ -23,7 +23,7 @@ def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     
-    # 建立基礎表格
+    # Base tables creation
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,7 +56,7 @@ def init_db():
         )
     ''')
     
-    # 檢查並自動修復 users 表格欄位相容性
+    # Auto-repair legacy table columns
     c.execute("PRAGMA table_info(users)")
     user_cols = [col[1] for col in c.fetchall()]
     if 'password' not in user_cols:
@@ -65,27 +65,27 @@ def init_db():
         else:
             c.execute("ALTER TABLE users ADD COLUMN password TEXT")
 
-    # 檢查並修復 work_logs 表格欄位
     c.execute("PRAGMA table_info(work_logs)")
     work_cols = [col[1] for col in c.fetchall()]
     if 'company' not in work_cols:
         c.execute("ALTER TABLE work_logs ADD COLUMN company TEXT DEFAULT '預設公司'")
 
-    # 檢查並修復 user_settings 表格欄位
     c.execute("PRAGMA table_info(user_settings)")
     settings_cols = [col[1] for col in c.fetchall()]
     if 'companies' not in settings_cols:
         c.execute("ALTER TABLE user_settings ADD COLUMN companies TEXT DEFAULT '[\"預設公司\"]'")
 
-    # 清除舊的 eason 帳號
+    # Wipe obsolete test account
     c.execute("DELETE FROM users WHERE username='eason'")
     c.execute("DELETE FROM user_settings WHERE username='eason'")
 
-    # 強制重置 admin 帳號 (密碼為 admin)
-    hashed_pwd = generate_password_hash("admin")
+    # Force recreate clean admin account with current hash standard
     c.execute("DELETE FROM users WHERE username='admin'")
+    c.execute("DELETE FROM user_settings WHERE username='admin'")
+    
+    hashed_pwd = generate_password_hash("admin")
     c.execute("INSERT INTO users (username, password, is_admin) VALUES ('admin', ?, 1)", (hashed_pwd,))
-    c.execute("INSERT OR IGNORE INTO user_settings (username, pay_mode, default_rate, currency, companies) VALUES ('admin', 'day', 700, '$', '[\"預設公司\"]')")
+    c.execute("INSERT INTO user_settings (username, pay_mode, default_rate, currency, companies) VALUES ('admin', 'day', 700, '$', '[\"預設公司\"]')")
 
     conn.commit()
     conn.close()
@@ -130,21 +130,36 @@ def login():
         username = data.get('username', '').strip()
         password = data.get('password', '').strip()
         
+        if not username or not password:
+            return jsonify({"success": False, "message": "請輸入帳號與密碼"}), 400
+
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
         c.execute("SELECT password, is_admin FROM users WHERE username=?", (username,))
         row = c.fetchone()
         conn.close()
 
-        if row and row[0] and check_password_hash(row[0], password):
+        if not row or not row[0]:
+            return jsonify({"success": False, "message": "帳號或密碼錯誤"}), 401
+
+        # Safe hash check to prevent 500 error on malformed database entries
+        password_matched = False
+        try:
+            password_matched = check_password_hash(row[0], password)
+        except Exception as hash_err:
+            print(f"Hash evaluation error for user {username}: {hash_err}")
+            password_matched = False
+
+        if password_matched:
             session['username'] = username
             session['is_admin'] = row[1]
             return jsonify({"success": True, "username": username, "is_admin": row[1]})
         
         return jsonify({"success": False, "message": "帳號或密碼錯誤"}), 401
+
     except Exception as e:
-        print(f"Login Error: {e}")
-        return jsonify({"success": False, "message": f"資料庫異常，請嘗試重新整理。細節: {str(e)}"}), 500
+        print(f"Unhandled Login Error: {e}")
+        return jsonify({"success": False, "message": f"Server Error: {str(e)}"}), 500
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
