@@ -11,7 +11,7 @@
 <body class="bg-[#FAF9F6] text-[#191919] min-h-screen p-2 sm:p-8 font-sans antialiased">
   <div id="app" class="max-w-4xl mx-auto space-y-4">
     
-    <!-- Header -->
+    <!-- 頁頭資訊 -->
     <header class="flex justify-between items-baseline border-b border-[#E5E5E5] pb-3">
       <div>
         <h1 class="text-lg sm:text-3xl font-semibold tracking-tight text-[#111111]">工時與薪資記錄系統</h1>
@@ -26,7 +26,7 @@
       </div>
     </header>
 
-    <!-- Admin target user switch -->
+    <!-- 管理者切換目標帳號 -->
     <div v-if="isAdmin" class="bg-[#EAEAEA] p-2 border border-[#CCCCCC] font-mono text-xs flex items-center justify-between">
       <div class="flex items-center space-x-2">
         <span class="font-bold text-[#333]">管理目標帳號:</span>
@@ -44,7 +44,7 @@
       </button>
     </div>
 
-    <!-- Monthly Stats Summary -->
+    <!-- 月份統計摘要 -->
     <main class="space-y-3">
       <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2">
         <div class="flex items-center space-x-3">
@@ -62,7 +62,7 @@
         </div>
       </div>
 
-      <!-- Company Breakdown -->
+      <!-- 各公司統計小計 -->
       <div v-if="Object.keys(summary.by_company || {}).length > 0" class="bg-white border p-3 font-mono text-xs space-y-1">
         <div class="font-bold text-[#737373] text-[10px] border-b pb-1 mb-1">各公司工時與薪資小計:</div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -73,7 +73,7 @@
         </div>
       </div>
 
-      <!-- Calendar Grid -->
+      <!-- 月曆表格 -->
       <div class="border-t border-l border-[#E5E5E5] grid grid-cols-7 text-xs font-mono w-full">
         <div v-for="d in ['日','一','二','三','四','五','六']" :key="d" class="p-1 border-r border-b border-[#E5E5E5] text-[10px] text-[#A3A3A3] text-center">
           週{{ d }}
@@ -106,7 +106,7 @@
       </div>
     </main>
 
-    <!-- Work Log Item Modal -->
+    <!-- 工作紀錄彈窗 Modal -->
     <div v-if="selectedDay" class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
       <div class="bg-[#FAF9F6] border border-[#111111] p-4 max-w-md w-full space-y-4 max-h-[90vh] overflow-y-auto">
         <div class="flex justify-between items-center border-b pb-2">
@@ -206,7 +206,7 @@
       </div>
     </div>
 
-    <!-- User Settings Modal -->
+    <!-- 偏好設定彈窗 Modal -->
     <div v-if="showSettings" class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
       <div class="bg-[#FAF9F6] border border-[#111111] p-4 max-w-sm w-full space-y-3 font-mono text-xs">
         <div class="flex justify-between items-center border-b pb-2">
@@ -295,7 +295,7 @@
           'ot_3.0': { label: '加班 3.0x' }
         };
 
-        // 過濾選單，排除目前登入者（不分大小寫）
+        // 過濾選單：防止重複顯示目前登入者（不分大小寫）
         const filteredUserList = computed(() => {
           return userList.value.filter(u => u.toLowerCase() !== currentUser.value.toLowerCase());
         });
@@ -308,29 +308,52 @@
           return Array.from(new Set(comps));
         });
 
-        // 格式化顯示時間（全中文介面）
+        // 核心天數/小時格式化邏輯
         const formatDuration = (totalDecimalHours) => {
           if (!totalDecimalHours || totalDecimalHours <= 0) {
             return userSettings.value.pay_mode === 'day' ? '0 天' : '0 小時 0 分鐘';
           }
-          
-          if (userSettings.value.pay_mode === 'day') {
-            const days = totalDecimalHours / 8;
-            const formattedDays = days % 1 === 0 ? days : days.toFixed(1);
-            return `${formattedDays} 天`;
-          }
 
           const totalMinutes = Math.round(totalDecimalHours * 60);
-          const days = Math.floor(totalMinutes / (24 * 60));
-          const remainingMinutesAfterDays = totalMinutes % (24 * 60);
-          const hours = Math.floor(remainingMinutesAfterDays / 60);
-          const mins = remainingMinutesAfterDays % 60;
 
-          if (days > 0) {
-            return `${days} 天 ${hours} 小時 ${mins} 分鐘`;
-          } else {
-            return `${hours} 小時 ${mins} 分鐘`;
+          if (userSettings.value.pay_mode === 'day') {
+            const days = totalDecimalHours / 8;
+            
+            // 完美整天或半天（例如: 1 天, 1.5 天, 11 天）直接顯示
+            if (days % 0.5 === 0) {
+              return `${days} 天`;
+            }
+
+            // 非整數或半天的天數（例如: 7.8 天），轉為「X 天 Y 小時 Z 分鐘」
+            const wholeDays = Math.floor(totalDecimalHours / 8);
+            const remainingMinutes = totalMinutes - (wholeDays * 8 * 60);
+            const hours = Math.floor(remainingMinutes / 60);
+            const mins = remainingMinutes % 60;
+
+            let result = wholeDays > 0 ? `${wholeDays} 天 ` : '';
+            if (hours > 0) result += `${hours} 小時 `;
+            if (mins > 0) result += `${mins} 分鐘`;
+
+            return result.trim();
           }
+
+          // 按時計算模式
+          const hours = Math.floor(totalMinutes / 60);
+          const mins = totalMinutes % 60;
+
+          if (hours >= 8) {
+            const d = Math.floor(hours / 8);
+            const h = hours % 8;
+            let res = `${d} 天 `;
+            if (h > 0) res += `${h} 小時 `;
+            if (mins > 0) res += `${mins} 分鐘`;
+            return res.trim();
+          }
+
+          let res = '';
+          if (hours > 0) res += `${hours} 小時 `;
+          if (mins > 0) res += `${mins} 分鐘`;
+          return res.trim() || '0 分鐘';
         };
 
         const checkAuth = (res) => {
