@@ -2,94 +2,153 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Login - Work Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登入 / 註冊系統</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 </head>
-<body class="bg-[#FAF9F6] text-[#191919] min-h-screen flex items-center justify-center p-4 font-sans">
-  <div class="bg-white border border-[#111111] p-6 max-w-sm w-full space-y-4 shadow-sm">
-    <h2 id="title" class="text-base font-bold text-center font-mono tracking-wider">ACCOUNT LOGIN</h2>
+<body class="bg-[#F4F6F8] text-[#111827] min-h-screen flex items-center justify-center p-4 font-sans">
+
+  <div id="app" class="w-full max-w-sm bg-white p-6 rounded shadow-md border border-gray-200">
     
-    <form id="authForm" onsubmit="return false;" class="space-y-3 font-mono text-xs">
-      <div>
-        <label class="block text-[#737373] mb-1">USERNAME</label>
-        <input type="text" id="username" autocomplete="username" required class="w-full bg-[#F5F5F3] border border-[#E5E5E5] p-2 outline-none">
-      </div>
-      <div>
-        <label class="block text-[#737373] mb-1">PASSWORD</label>
-        <input type="password" id="password" autocomplete="current-password" required class="w-full bg-[#F5F5F3] border border-[#E5E5E5] p-2 outline-none">
-      </div>
+    <!-- 頁籤分頁 -->
+    <div class="flex border-b mb-6 text-sm font-bold">
+      <button 
+        @click="isRegister = false" 
+        :class="!isRegister ? 'border-b-2 border-black text-black' : 'text-gray-400 hover:text-gray-600'" 
+        class="flex-1 pb-2 text-center transition">
+        LOGIN
+      </button>
+      <button 
+        @click="isRegister = true" 
+        :class="isRegister ? 'border-b-2 border-black text-black' : 'text-gray-400 hover:text-gray-600'" 
+        class="flex-1 pb-2 text-center transition">
+        REGISTER
+      </button>
+    </div>
+
+    <h1 class="text-xl font-black text-center tracking-wide uppercase mb-6">
+      {{ isRegister ? 'Create Account' : 'Welcome Back' }}
+    </h1>
+
+    <!-- 登入與註冊表單 -->
+    <form @submit.prevent="handleSubmit" class="space-y-4">
       
-      <div id="msg" class="text-red-500 text-[10px] hidden font-mono"></div>
-      
-      <button type="button" id="submitBtn" class="w-full bg-[#111111] text-white py-2 font-bold hover:opacity-90 transition">LOGIN</button>
+      <div>
+        <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Username</label>
+        <input 
+          v-model="username" 
+          type="text" 
+          required 
+          class="w-full bg-gray-50 border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-black rounded-none">
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Password</label>
+        <input 
+          v-model="password" 
+          type="password" 
+          required 
+          class="w-full bg-gray-50 border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-black rounded-none">
+      </div>
+
+      <!-- 僅在「註冊」時顯示的角色與公司選單 -->
+      <template v-if="isRegister">
+        <div>
+          <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Role (帳號身份)</label>
+          <select 
+            v-model="role" 
+            class="w-full bg-gray-50 border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-black rounded-none">
+            <option value="employee">一般員工 (Employee)</option>
+            <option value="accounting">會計審核員 (Accounting)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Company (所屬公司)</label>
+          <input 
+            v-model="company" 
+            type="text" 
+            placeholder="例如: 預設公司"
+            class="w-full bg-gray-50 border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-black rounded-none">
+        </div>
+      </template>
+
+      <!-- 錯誤提示 -->
+      <div v-if="errorMessage" class="text-xs text-red-500 font-bold text-center">
+        {{ errorMessage }}
+      </div>
+
+      <button 
+        type="submit" 
+        class="w-full bg-black text-white font-bold py-2 text-sm tracking-wider uppercase hover:bg-gray-800 transition">
+        {{ isRegister ? 'Register' : 'Login' }}
+      </button>
     </form>
 
-    <div class="text-center pt-2 border-t font-mono text-[10px]">
-      <button type="button" id="toggleBtn" class="text-[#737373] underline">沒有帳號？點此註冊</button>
+    <div class="mt-4 text-center">
+      <button @click="isRegister = !isRegister" class="text-xs text-gray-500 underline hover:text-black">
+        {{ isRegister ? '已有帳號？點此登入' : '還沒有帳號？點此註冊' }}
+      </button>
     </div>
+
   </div>
 
   <script>
-    let isRegister = false;
-    const toggleBtn = document.getElementById('toggleBtn');
-    const title = document.getElementById('title');
-    const submitBtn = document.getElementById('submitBtn');
-    const msg = document.getElementById('msg');
+    const { createApp, ref } = Vue;
 
-    toggleBtn.addEventListener('click', () => {
-      isRegister = !isRegister;
-      title.innerText = isRegister ? 'CREATE ACCOUNT' : 'ACCOUNT LOGIN';
-      submitBtn.innerText = isRegister ? 'REGISTER' : 'LOGIN';
-      toggleBtn.innerText = isRegister ? '已有帳號？點此登入' : '沒有帳號？點此註冊';
-      msg.classList.add('hidden');
-    });
+    createApp({
+      setup() {
+        const isRegister = ref(false);
+        const username = ref('');
+        const password = ref('');
+        const role = ref('employee');
+        const company = ref('預設公司');
+        const errorMessage = ref('');
 
-    submitBtn.addEventListener('click', async () => {
-      const usernameInput = document.getElementById('username').value.trim();
-      const passwordInput = document.getElementById('password').value.trim();
+        const handleSubmit = async () => {
+          errorMessage.value = '';
+          const endpoint = isRegister.value ? '/api/register' : '/api/login';
+          
+          const payload = isRegister.value 
+            ? { username: username.value, password: password.value, role: role.value, company: company.value }
+            : { username: username.value, password: password.value };
 
-      if (!usernameInput || !passwordInput) {
-        msg.innerText = '請輸入帳號與密碼';
-        msg.classList.remove('hidden');
-        return;
-      }
+          try {
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
 
-      submitBtn.disabled = true;
-      submitBtn.innerText = 'PROCESSING...';
-      msg.classList.add('hidden');
+            const data = await res.json();
 
-      const endpoint = isRegister ? '/api/register' : '/api/login';
+            if (!res.ok) {
+              errorMessage.value = data.error || data.message || '操作失敗';
+              return;
+            }
 
-      try {
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: usernameInput, password: passwordInput })
-        });
-
-        const data = await res.json();
-
-        if (res.ok) {
-          if (isRegister) {
-            alert('註冊成功！請直接登入');
-            toggleBtn.click();
-            document.getElementById('password').value = '';
-          } else {
-            window.location.href = '/';
+            if (isRegister.value) {
+              alert('註冊成功！請直接登入');
+              isRegister.value = false;
+            } else {
+              // 登入成功後根據角色跳轉
+              if (data.role === 'accounting') {
+                window.location.href = '/accounting.html';
+              } else {
+                window.location.href = '/';
+              }
+            }
+          } catch (err) {
+            errorMessage.value = '無法連線至伺服器';
           }
-        } else {
-          msg.innerText = data.detail || '操作失敗';
-          msg.classList.remove('hidden');
-        }
-      } catch (err) {
-        msg.innerText = '網路連線失敗，請稍後再試';
-        msg.classList.remove('hidden');
-      } finally {
-        submitBtn.disabled = false;
-        submitBtn.innerText = isRegister ? 'REGISTER' : 'LOGIN';
+        };
+
+        return {
+          isRegister, username, password, role, company, errorMessage, handleSubmit
+        };
       }
-    });
+    }).mount('#app');
   </script>
 </body>
 </html>
