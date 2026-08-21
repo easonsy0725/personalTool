@@ -11,7 +11,7 @@
 <body class="bg-[#FAF9F6] text-[#191919] min-h-screen p-2 sm:p-8 font-sans antialiased">
   <div id="app" class="max-w-4xl mx-auto space-y-4">
     
-    <!-- 頁首 Header -->
+    <!-- Header -->
     <header class="flex justify-between items-baseline border-b border-[#E5E5E5] pb-3">
       <div>
         <h1 class="text-lg sm:text-3xl font-semibold tracking-tight text-[#111111]">工時與薪資記錄系統</h1>
@@ -26,13 +26,13 @@
       </div>
     </header>
 
-    <!-- 管理者切換帳號 -->
+    <!-- Admin target user switch -->
     <div v-if="isAdmin" class="bg-[#EAEAEA] p-2 border border-[#CCCCCC] font-mono text-xs flex items-center justify-between">
       <div class="flex items-center space-x-2">
         <span class="font-bold text-[#333]">管理目標帳號:</span>
         <select v-model="targetUser" @change="onTargetUserChange" class="bg-white border p-1 text-xs">
           <option :value="currentUser">自己 ({{ currentUser }})</option>
-          <option v-for="u in userList" :key="u" :value="u">{{ u }}</option>
+          <option v-for="u in filteredUserList" :key="u" :value="u">{{ u }}</option>
         </select>
       </div>
       <button 
@@ -44,7 +44,7 @@
       </button>
     </div>
 
-    <!-- 月份與統計數據 -->
+    <!-- Monthly Stats Summary -->
     <main class="space-y-3">
       <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2">
         <div class="flex items-center space-x-3">
@@ -62,7 +62,7 @@
         </div>
       </div>
 
-      <!-- 按公司分類的工時與薪資顯示 -->
+      <!-- Company Breakdown -->
       <div v-if="Object.keys(summary.by_company || {}).length > 0" class="bg-white border p-3 font-mono text-xs space-y-1">
         <div class="font-bold text-[#737373] text-[10px] border-b pb-1 mb-1">各公司工時與薪資小計:</div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -73,7 +73,7 @@
         </div>
       </div>
 
-      <!-- 日曆網格 Calendar Grid -->
+      <!-- Calendar Grid -->
       <div class="border-t border-l border-[#E5E5E5] grid grid-cols-7 text-xs font-mono w-full">
         <div v-for="d in ['日','一','二','三','四','五','六']" :key="d" class="p-1 border-r border-b border-[#E5E5E5] text-[10px] text-[#A3A3A3] text-center">
           週{{ d }}
@@ -106,7 +106,7 @@
       </div>
     </main>
 
-    <!-- 日工作檢視/管理 Modal -->
+    <!-- Work Log Item Modal -->
     <div v-if="selectedDay" class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
       <div class="bg-[#FAF9F6] border border-[#111111] p-4 max-w-md w-full space-y-4 max-h-[90vh] overflow-y-auto">
         <div class="flex justify-between items-center border-b pb-2">
@@ -116,7 +116,6 @@
           <button @click="selectedDay = null" class="font-bold">✕</button>
         </div>
 
-        <!-- 當天工作列表 -->
         <div class="space-y-2 max-h-40 overflow-y-auto">
           <div v-if="dayLogs.length === 0" class="text-xs text-[#737373] font-mono py-2 text-center">當天尚無紀錄</div>
           <div v-for="item in dayLogs" :key="item.id" class="p-2 border border-[#E5E5E5] bg-white flex justify-between items-center text-xs font-mono">
@@ -137,14 +136,12 @@
           </div>
         </div>
 
-        <!-- 新增/編輯工作表單 -->
         <div class="border-t pt-3 space-y-3 font-mono text-xs">
           <div class="font-bold text-[#111111] flex justify-between">
             <span>{{ editingLogId ? '編輯工作條目' : '新增工作條目' }}</span>
             <button v-if="editingLogId" @click="resetForm" class="text-[10px] text-gray-500 underline">取消編輯</button>
           </div>
 
-          <!-- 公司選擇區區塊：編輯模式下必定顯示，新增模式下若有多家公司時顯示 -->
           <div v-if="editingLogId || (userSettings.companies && userSettings.companies.length > 1)">
             <label class="block text-[10px] text-[#737373] mb-1">選擇任職公司</label>
             <select v-model="formCompany" class="w-full bg-white border p-1.5 text-xs font-bold">
@@ -163,7 +160,6 @@
             >按時計算</button>
           </div>
 
-          <!-- 日薪模式選項 -->
           <div v-if="formPayMode === 'day'" class="space-y-2">
             <div class="grid grid-cols-3 gap-1">
               <button 
@@ -181,7 +177,6 @@
             </div>
           </div>
 
-          <!-- 時薪模式選項 -->
           <div v-if="formPayMode === 'hour'" class="space-y-2">
             <div class="grid grid-cols-2 gap-2">
               <div>
@@ -211,7 +206,7 @@
       </div>
     </div>
 
-    <!-- 個人偏好與公司設定 Modal -->
+    <!-- User Settings Modal -->
     <div v-if="showSettings" class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
       <div class="bg-[#FAF9F6] border border-[#111111] p-4 max-w-sm w-full space-y-3 font-mono text-xs">
         <div class="flex justify-between items-center border-b pb-2">
@@ -300,7 +295,10 @@
           'ot_3.0': { label: '加班 3.0x' }
         };
 
-        // 動態計算可選公司列表（合併目前設定的公司與紀錄中的舊公司名稱）
+        const filteredUserList = computed(() => {
+          return userList.value.filter(u => u !== currentUser.value);
+        });
+
         const availableCompanies = computed(() => {
           const comps = [...(userSettings.value.companies || ['預設公司'])];
           if (formCompany.value && !comps.includes(formCompany.value)) {
@@ -309,10 +307,17 @@
           return Array.from(new Set(comps));
         });
 
-        // 格式化時間 (需求：<24h 不顯示 days；例 19days 23hour 59mins)
         const formatDuration = (totalDecimalHours) => {
-          if (!totalDecimalHours || totalDecimalHours <= 0) return '0hour 0mins';
+          if (!totalDecimalHours || totalDecimalHours <= 0) {
+            return userSettings.value.pay_mode === 'day' ? '0 days' : '0hour 0mins';
+          }
           
+          if (userSettings.value.pay_mode === 'day') {
+            const days = totalDecimalHours / 8;
+            const formattedDays = days % 1 === 0 ? days : days.toFixed(1);
+            return `${formattedDays} day${days > 1 ? 's' : ''}`;
+          }
+
           const totalMinutes = Math.round(totalDecimalHours * 60);
           const days = Math.floor(totalMinutes / (24 * 60));
           const remainingMinutesAfterDays = totalMinutes % (24 * 60);
@@ -520,7 +525,7 @@
         });
 
         return {
-          currentUser, isAdmin, userList, targetUser, onTargetUserChange,
+          currentUser, isAdmin, userList, filteredUserList, targetUser, onTargetUserChange,
           currentYear, currentMonth, daysInMonth, firstDayOfWeek,
           summary, userSettings, settingsCompanies, showSettings, saveSettings, changeMonth,
           addCompanyInput, removeCompanyInput, formatDuration, availableCompanies,
