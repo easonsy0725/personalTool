@@ -12,11 +12,13 @@ def init_db():
     os.makedirs("data", exist_ok=True)
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+    
+    # 建立表格（若不存在）
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
+            password TEXT,
             is_admin INTEGER DEFAULT 0
         )
     ''')
@@ -44,10 +46,18 @@ def init_db():
         )
     ''')
     
-    # 補齊新欄位
+    # 自動相容與補齊舊資料庫缺少的欄位
+    c.execute("PRAGMA table_info(users)")
+    user_cols = [col[1] for col in c.fetchall()]
+    if 'password' not in user_cols:
+        if 'password_hash' in user_cols:
+            c.execute("ALTER TABLE users RENAME COLUMN password_hash TO password")
+        else:
+            c.execute("ALTER TABLE users ADD COLUMN password TEXT")
+
     c.execute("PRAGMA table_info(work_logs)")
-    columns = [col[1] for col in c.fetchall()]
-    if 'company' not in columns:
+    work_cols = [col[1] for col in c.fetchall()]
+    if 'company' not in work_cols:
         c.execute("ALTER TABLE work_logs ADD COLUMN company TEXT DEFAULT '預設公司'")
 
     c.execute("PRAGMA table_info(user_settings)")
@@ -64,7 +74,7 @@ def init_db():
 
     conn.commit()
     conn.close()
-
+    
 init_db()
 
 def get_current_user():
