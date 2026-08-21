@@ -4,10 +4,8 @@ from flask import Flask, request, jsonify, redirect, session
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__, static_folder='static', template_folder='static')
+app.secret_key = 'my_dashboard_secret_key_12345'
 
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'my_default_super_secret_key_12345')
-
-# 設定 SQLite 資料庫路徑為 data/dashboard.db
 DB_DIR = 'data'
 DB_NAME = os.path.join(DB_DIR, 'dashboard.db')
 
