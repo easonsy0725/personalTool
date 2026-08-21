@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>會計獨立審核模式</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body class="bg-[#F4F6F8] text-[#111827] min-h-screen p-4 sm:p-8 font-sans">
+  <div id="app" class="max-w-5xl mx-auto space-y-4">
+    
+    <!-- 頂部資訊列 -->
+    <header class="flex justify-between items-center bg-white p-4 rounded shadow-sm border border-gray-200">
+      <div>
+        <h1 class="text-xl font-bold text-blue-900">📊 會計獨立帳務稽核系統</h1>
+        <p class="text-xs text-gray-500 font-mono mt-1">
+          當前使用者: <span class="font-bold text-black">{{ currentUser }}</span> | 
+          授權公司: <span class="font-bold text-blue-600">{{ targetCompany }}</span>
+        </p>
+      </div>
+      <button @click="logout" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-3 py-1.5 rounded border border-red-200 font-bold">登出系統</button>
+    </header>
+
+    <!-- 告示牌 -->
+    <div class="bg-amber-50 border-l-4 border-amber-400 p-3 text-xs text-amber-800 rounded">
+      <strong>⚠️ 會計獨立模式說明：</strong>在此模式下對工時、時薪或備註進行的任何調整，<strong>僅會影響會計報表數據</strong>，絕對不會覆蓋或改動員工原本填寫的原始差勤紀錄。
+    </div>
+
+    <!-- 主數據表單 -->
+    <main class="bg-white p-4 rounded shadow-sm border border-gray-200 space-y-4">
+      <div class="flex justify-between items-center">
+        <div class="flex items-center space-x-2">
+          <h2 class="text-lg font-bold">{{ currentYear }} 年 {{ currentMonth }} 月 帳冊紀錄</h2>
+          <button @click="changeMonth(-1)" class="text-xs text-gray-500 hover:text-black font-mono">[上個月]</button>
+          <button @click="changeMonth(1)" class="text-xs text-gray-500 hover:text-black font-mono">[下個月]</button>
+        </div>
+        <div class="text-sm font-mono bg-blue-50 px-3 py-1 rounded text-blue-900">
+          總核算核算薪資支出: <span class="font-bold text-base">${{ totalSalary.toLocaleString() }}</span>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-xs font-mono">
+          <thead>
+            <tr class="bg-gray-100 border-b text-gray-600">
+              <th class="p-2">日期</th>
+              <th class="p-2">員工姓名</th>
+              <th class="p-2">工時/類型</th>
+              <th class="p-2">會計計價單價 ($)</th>
+              <th class="p-2">試算小計 ($)</th>
+              <th class="p-2">會計備註</th>
+              <th class="p-2 text-center">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="logs.length === 0">
+              <td colspan="7" class="p-4 text-center text-gray-400">本月份尚無該公司的差勤紀錄</td>
+            </tr>
+            <tr v-for="item in logs" :key="item.id" class="border-b hover:bg-gray-50">
+              <td class="p-2 font-bold">{{ item.date }}</td>
+              <td class="p-2"><span class="bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded">{{ item.username }}</span></td>
+              <td class="p-2">{{ item.pay_mode === 'day' ? item.status : item.hours + ' 小時' }}</td>
+              <td class="p-2">
+                <input v-model.number="item.rate" type="number" class="w-20 border p-1 rounded text-right">
+              </td>
+              <td class="p-2 font-bold text-blue-700">${{ item.daily_pay }}</td>
+              <td class="p-2">
+                <input v-model="item.notes" placeholder="可輸入核算調修備註..." class="w-full border p-1 rounded">
+              </td>
+              <td class="p-2 text-center">
+                <button @click="saveItem(item)" class="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded font-sans text-[11px]">試算更新</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+
+  </div>
+
+  <script>
+    const { createApp, ref, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        const currentUser = ref('');
+        const targetCompany = ref('');
+        const currentYear = ref(new Date().getFullYear());
+        const currentMonth = ref(new Date().getMonth() + 1);
+        const logs = ref([]);
+        const totalSalary = ref(0);
+
+        const fetchMe = async () => {
+          const res = await fetch('/api/me');
+          if (res.status === 401) { window.location.href = '/login.html'; return; }
+          const data = await res.json();
+          currentUser.value = data.username;
+          targetCompany.value = data.company;
+        };
+
+        const loadAccountingData = async () => {
+          const res = await fetch(`/api/accounting/work/${currentYear.value}/${currentMonth.value}`);
+          if (res.ok) {
+            const data = await res.json();
+            logs.value = data.logs;
+            totalSalary.value = data.total_salary;
+            if(data.company) targetCompany.value = data.company;
+          }
+        };
+
+        const saveItem = async (item) => {
+          const res = await fetch('/api/accounting/work/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(item)
+          });
+          if (res.ok) {
+            alert('會計數據更新成功！');
+            await loadAccountingData();
+          }
+        };
+
+        const changeMonth = (delta) => {
+          currentMonth.value += delta;
+          if (currentMonth.value > 12) { currentMonth.value = 1; currentYear.value++; }
+          if (currentMonth.value < 1) { currentMonth.value = 12; currentYear.value--; }
+          loadAccountingData();
+        };
+
+        const logout = async () => {
+          await fetch('/api/logout', { method: 'POST' });
+          window.location.href = '/login.html';
+        };
+
+        onMounted(async () => {
+          await fetchMe();
+          await loadAccountingData();
+        });
+
+        return {
+          currentUser, targetCompany, currentYear, currentMonth, logs, totalSalary,
+          changeMonth, saveItem, logout
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
