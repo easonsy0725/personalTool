@@ -4,21 +4,21 @@ from flask import Flask, request, jsonify, redirect, session
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__, static_folder='static', template_folder='static')
-# 優先讀取系統環境變數，若未設定則自動生成/使用預設值
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default-dev-key-change-it')
 
-# 指定資料庫路徑為 data/dashboard.db
+# 優先讀取環境變數，若未設定則使用備用金鑰，防止容器啟動崩潰
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key_12345')
+
+# 設定 SQLite 資料庫路徑為 data/dashboard.db
 DB_DIR = 'data'
 DB_NAME = os.path.join(DB_DIR, 'dashboard.db')
 
 def get_db():
     if not os.path.exists(DB_DIR):
-        os.makedirs(DB_DIR)
+        os.makedirs(DB_DIR, exist_ok=True)
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     return conn
 
-# 初始化資料庫（僅建立 Missing Table，不修改/覆蓋任何舊資料）
 def init_db():
     with get_db() as conn:
         conn.execute('''
@@ -45,12 +45,6 @@ def init_db():
                 source TEXT DEFAULT 'employee'
             )
         ''')
-        # 確保 admin 帳號存在
-        conn.execute('''
-            INSERT INTO users (username, password, role) 
-            VALUES ('admin', ?, 'admin')
-            ON CONFLICT(username) DO NOTHING
-        ''', (generate_password_hash('123456'),))
         conn.commit()
 
 init_db()
@@ -95,8 +89,7 @@ def get_me():
 @app.route('/api/users')
 def get_users():
     with get_db() as conn:
-        # 抓出 work_logs 與 users 中出現過的所有使用者
-        users = conn.execute("SELECT DISTINCT username FROM work_logs UNION SELECT username FROM users").fetchall()
+        users = conn.execute("SELECT DISTINCT username FROM users UNION SELECT username FROM work_logs").fetchall()
         return jsonify([u['username'] for u in users])
 
 @app.route('/api/work/<int:year>/<int:month>')
@@ -105,7 +98,6 @@ def get_work_logs(year, month):
     month_str = f"{year}-{month:02d}"
     
     with get_db() as conn:
-        # 完全放寬查詢：只依據 target_user 與月份查詢
         query = "SELECT * FROM work_logs WHERE username = ? AND date LIKE ?"
         rows = conn.execute(query, (target_user, f"{month_str}%")).fetchall()
 
