@@ -65,10 +65,11 @@ def login():
         user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
         if user and check_password_hash(user['password'], password):
             session['username'] = user['username']
-            session['role'] = user['role']
+            # 使用 keys() 檢查或 get() 避免 KeyError / IndexError
+            session['role'] = user['role'] if 'role' in user.keys() else 'admin'
             return jsonify({'status': 'success'})
         return jsonify({'error': '帳號或密碼錯誤'}), 400
-
+        
 @app.route('/api/logout', methods=['POST'])
 def logout():
     session.clear()
