@@ -46,7 +46,6 @@ def init_db():
         )
     ''')
     
-    # 員工原始工作紀錄表
     c.execute('''
         CREATE TABLE IF NOT EXISTS work_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,7 +61,6 @@ def init_db():
         )
     ''')
 
-    # 獨立會計資料庫表：沙盒機制
     c.execute('''
         CREATE TABLE IF NOT EXISTS accounting_work_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,7 +78,7 @@ def init_db():
         )
     ''')
     
-    # 自動補齊舊版 SQLite 欄位
+    # 自動補齊欄位
     c.execute("PRAGMA table_info(users)")
     user_cols = [col[1] for col in c.fetchall()]
     if 'role' not in user_cols:
@@ -90,17 +88,7 @@ def init_db():
     if 'display_name' not in user_cols:
         c.execute("ALTER TABLE users ADD COLUMN display_name TEXT DEFAULT ''")
 
-    c.execute("PRAGMA table_info(work_logs)")
-    work_cols = [col[1] for col in c.fetchall()]
-    if 'company' not in work_cols:
-        c.execute("ALTER TABLE work_logs ADD COLUMN company TEXT DEFAULT '預設公司'")
-
-    c.execute("PRAGMA table_info(user_settings)")
-    settings_cols = [col[1] for col in c.fetchall()]
-    if 'companies' not in settings_cols:
-        c.execute("ALTER TABLE user_settings ADD COLUMN companies TEXT DEFAULT '[\"預設公司\"]'")
-
-    # 安全的預設 admin 初始化：保護既有資料
+    # 預設 admin 帳號
     c.execute("SELECT username FROM users WHERE username='admin'")
     if not c.fetchone():
         hashed_pwd = generate_password_hash("admin")
@@ -137,10 +125,8 @@ def serve_index():
     user = get_current_user()
     if not user:
         return send_from_directory('static', 'login.html')
-    
     if get_user_role() == 'accounting':
         return send_from_directory('static', 'accounting.html')
-    
     return send_from_directory('static', 'index.html')
 
 @app.route('/login.html')
@@ -153,51 +139,40 @@ def serve_accounting():
         return send_from_directory('static', 'login.html')
     return send_from_directory('static', 'accounting.html')
 
-@app.route('/manifest.json')
-def serve_manifest():
-    return send_from_directory('static', 'manifest.json')
-
-@app.route('/api/login', methods=['POST', 'OPTIONS'])
+@app.route('/api/login', methods=['POST'])
 def login():
-    if request.method == 'OPTIONS':
-        return jsonify({"success": True}), 200
+    data = request.json or {}
+    username = data.get('username', '').strip()
+    password = data.get('password', '').strip()
+    
+    if not username or not password:
+        return jsonify({"success": False, "message": "請輸入帳號與密碼"}), 400
 
-    try:
-        data = request.json or {}
-        username = data.get('username', '').strip()
-        password = data.get('password', '').strip()
-        
-        if not username or not password:
-            return jsonify({"success": False, "message": "請輸入帳號與密碼"}), 400
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT password, is_admin, role, company, display_name FROM users WHERE username=?", (username,))
+    row = c.fetchone()
+    conn.close()
 
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        c.execute("SELECT password, is_admin, role, company, display_name FROM users WHERE username=?", (username,))
-        row = c.fetchone()
-        conn.close()
-
-        if not row or not row[0]:
-            return jsonify({"success": False, "message": "帳號或密碼錯誤"}), 401
-
-        if check_password_hash(row[0], password):
-            session['username'] = username
-            session['is_admin'] = row[1]
-            session['role'] = row[2] or 'employee'
-            session['company'] = row[3] or ''
-            session['display_name'] = row[4] or username
-            return jsonify({
-                "success": True, 
-                "username": username, 
-                "display_name": session['display_name'],
-                "is_admin": row[1],
-                "role": session['role'],
-                "company": session['company']
-            })
-        
+    if not row or not row[0]:
         return jsonify({"success": False, "message": "帳號或密碼錯誤"}), 401
 
-    except Exception as e:
-        return jsonify({"success": False, "message": f"Server Error: {str(e)}"}), 500
+    if check_password_hash(row[0], password):
+        session['username'] = username
+        session['is_admin'] = row[1]
+        session['role'] = row[2] or 'employee'
+        session['company'] = row[3] or ''
+        session['display_name'] = row[4] or username
+        return jsonify({
+            "success": True, 
+            "username": username, 
+            "display_name": session['display_name'],
+            "is_admin": row[1],
+            "role": session['role'],
+            "company": session['company']
+        })
+    
+    return jsonify({"success": False, "message": "帳號或密碼錯誤"}), 401
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -209,15 +184,47 @@ def me():
     username = get_current_user()
     if not username:
         return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT display_name, role, company, is_admin FROM users WHERE username=?", (username,))
+    row = c.fetchone()
+    conn.close()
+
+    display_name = row[0] if row and row[0] else username
+    session['display_name'] = display_name
+
     return jsonify({
         "username": username, 
-        "display_name": session.get('display_name', username),
+        "display_name": display_name,
         "is_admin": is_admin(),
         "role": get_user_role(),
         "company": get_user_company()
     })
 
-# 管理者：取得所有使用者詳細清單
+# 功能 1：一般使用者修改自己的 Display Name
+@app.route('/api/user/profile', methods=['POST'])
+def update_profile():
+    username = get_current_user()
+    if not username:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.json or {}
+    new_display_name = data.get('display_name', '').strip()
+
+    if not new_display_name:
+        return jsonify({"error": "顯示名稱不能為空"}), 400
+
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE users SET display_name=? WHERE username=?", (new_display_name, username))
+    conn.commit()
+    conn.close()
+
+    session['display_name'] = new_display_name
+    return jsonify({"success": True, "display_name": new_display_name})
+
+# 功能 2：管理者取得所有使用者列表
 @app.route('/api/admin/users', methods=['GET'])
 def list_users():
     if not is_admin():
@@ -238,7 +245,7 @@ def list_users():
     conn.close()
     return jsonify(users)
 
-# 管理者：更新任一使用者的 Display Name / Role / Company
+# 功能 3：管理者修改任意使用者的 Display Name / Role / Company
 @app.route('/api/admin/users/update', methods=['POST'])
 def update_user_by_admin():
     if not is_admin():
@@ -264,25 +271,10 @@ def update_user_by_admin():
 
     conn.commit()
     conn.close()
-    return jsonify({"success": True})
 
-@app.route('/api/admin/users/delete', methods=['POST'])
-def delete_user():
-    if not is_admin():
-        return jsonify({"error": "Forbidden"}), 403
-    data = request.json or {}
-    target_user = data.get('target_user')
     if target_user == get_current_user():
-        return jsonify({"error": "無法刪除當前登入的管理者帳號"}), 400
+        session['display_name'] = new_display_name or target_user
 
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("DELETE FROM users WHERE username=?", (target_user,))
-    c.execute("DELETE FROM user_settings WHERE username=?", (target_user,))
-    c.execute("DELETE FROM work_logs WHERE username=?", (target_user,))
-    c.execute("DELETE FROM accounting_work_logs WHERE username=?", (target_user,))
-    conn.commit()
-    conn.close()
     return jsonify({"success": True})
 
 @app.route('/api/register', methods=['POST'])
@@ -379,252 +371,6 @@ def settings():
         conn.commit()
         conn.close()
         return jsonify({"success": True})
-
-@app.route('/api/work/<int:year>/<int:month>', methods=['GET'])
-def get_work_logs(year, month):
-    if not get_current_user():
-        return jsonify({"error": "Unauthorized"}), 401
-
-    target_user = request.args.get('target_user', get_current_user())
-    if not check_permission(target_user):
-        return jsonify({"error": "Forbidden"}), 403
-
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-
-    prefix = f"{year}-{month:02d}-%"
-    c.execute('''
-        SELECT id, date, company, pay_mode, status, rate, hours, daily_pay, location 
-        FROM work_logs 
-        WHERE username=? AND date LIKE ?
-        ORDER BY date ASC, id ASC
-    ''', (target_user, prefix))
-    
-    rows = c.fetchall()
-    conn.close()
-
-    logs = {}
-    total_hours = 0.0
-    total_salary = 0.0
-    by_company = {}
-
-    for row in rows:
-        lid, date, company, pay_mode, status, rate, hours, daily_pay, location = row
-        company_name = company if company else '預設公司'
-
-        item = {
-            "id": lid,
-            "date": date,
-            "company": company_name,
-            "pay_mode": pay_mode,
-            "status": status,
-            "rate": rate,
-            "hours": hours,
-            "daily_pay": daily_pay,
-            "location": location or ""
-        }
-        
-        if date not in logs:
-            logs[date] = []
-        logs[date].append(item)
-
-        total_hours += hours
-        total_salary += daily_pay
-
-        if company_name not in by_company:
-            by_company[company_name] = {"hours": 0.0, "salary": 0.0}
-        by_company[company_name]["hours"] += hours
-        by_company[company_name]["salary"] += daily_pay
-
-    return jsonify({
-        "logs": logs,
-        "summary": {
-            "total_hours": round(total_hours, 2),
-            "total_salary": round(total_salary, 2),
-            "by_company": by_company
-        }
-    })
-
-@app.route('/api/work/save', methods=['POST'])
-def save_work_log():
-    if not get_current_user():
-        return jsonify({"error": "Unauthorized"}), 401
-
-    data = request.json or {}
-    target_user = data.get('target_user', get_current_user())
-    if not check_permission(target_user):
-        return jsonify({"error": "Forbidden"}), 403
-
-    log_id = data.get('id')
-    date = data.get('date')
-    company = data.get('company', '預設公司').strip() or '預設公司'
-    pay_mode = data.get('pay_mode', 'day')
-    status = data.get('status', 'full')
-    rate = float(data.get('rate', 0))
-    hours = float(data.get('hours', 0))
-    location = data.get('location', '').strip()
-
-    daily_pay = 0.0
-    if pay_mode == 'day':
-        hours = 8.0
-        multipliers = {'half': 0.5, 'full': 1.0, 'ot_1.5': 1.5, 'ot_2.0': 2.0, 'ot_3.0': 3.0}
-        daily_pay = rate * multipliers.get(status, 1.0)
-        if status == 'half':
-            hours = 4.0
-    else:
-        status = 'hourly'
-        daily_pay = rate * hours
-
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-
-    if log_id:
-        c.execute('''
-            UPDATE work_logs 
-            SET company=?, pay_mode=?, status=?, rate=?, hours=?, daily_pay=?, location=?
-            WHERE id=? AND username=?
-        ''', (company, pay_mode, status, rate, hours, daily_pay, location, log_id, target_user))
-    else:
-        c.execute('''
-            INSERT INTO work_logs (username, company, date, pay_mode, status, rate, hours, daily_pay, location)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (target_user, company, date, pay_mode, status, rate, hours, daily_pay, location))
-
-    conn.commit()
-    conn.close()
-    return jsonify({"success": True})
-
-@app.route('/api/work/delete_item', methods=['POST'])
-def delete_work_item():
-    if not get_current_user():
-        return jsonify({"error": "Unauthorized"}), 401
-
-    data = request.json or {}
-    target_user = data.get('target_user', get_current_user())
-    if not check_permission(target_user):
-        return jsonify({"error": "Forbidden"}), 403
-
-    log_id = data.get('log_id')
-
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("DELETE FROM work_logs WHERE id=? AND username=?", (log_id, target_user))
-    conn.commit()
-    conn.close()
-    return jsonify({"success": True})
-
-# --- 會計審核 API ---
-
-@app.route('/api/accounting/work/<int:year>/<int:month>', methods=['GET'])
-def get_accounting_work_logs(year, month):
-    role = get_user_role()
-    if role not in ['accounting', 'admin']:
-        return jsonify({"error": "Forbidden: Accounting Mode Only"}), 403
-
-    acct_company = get_user_company()
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-
-    c.execute("SELECT username, display_name FROM users")
-    user_names = {row[0]: (row[1] if row[1] else row[0]) for row in c.fetchall()}
-
-    prefix = f"{year}-{month:02d}-%"
-
-    if role == 'admin':
-        c.execute('SELECT id, username, company, date, pay_mode, status, rate, hours, daily_pay, location FROM work_logs WHERE date LIKE ?', (prefix,))
-    else:
-        c.execute('SELECT id, username, company, date, pay_mode, status, rate, hours, daily_pay, location FROM work_logs WHERE company=? AND date LIKE ?', (acct_company, prefix))
-    
-    raw_logs = c.fetchall()
-
-    for r in raw_logs:
-        orig_id, un, comp, dt, pm, st, rt, hr, dp, loc = r
-        c.execute('SELECT id FROM accounting_work_logs WHERE original_log_id=?', (orig_id,))
-        if not c.fetchone():
-            c.execute('''
-                INSERT INTO accounting_work_logs 
-                (original_log_id, username, company, date, pay_mode, status, rate, hours, daily_pay, location)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (orig_id, un, comp, dt, pm, st, rt, hr, dp, loc))
-    conn.commit()
-
-    if role == 'admin':
-        c.execute('SELECT id, original_log_id, username, company, date, pay_mode, status, rate, hours, daily_pay, location, notes FROM accounting_work_logs WHERE date LIKE ? ORDER BY date ASC', (prefix,))
-    else:
-        c.execute('SELECT id, original_log_id, username, company, date, pay_mode, status, rate, hours, daily_pay, location, notes FROM accounting_work_logs WHERE company=? AND date LIKE ? ORDER BY date ASC', (acct_company, prefix))
-
-    rows = c.fetchall()
-    conn.close()
-
-    logs = []
-    total_salary = 0.0
-    for r in rows:
-        total_salary += r[9]
-        un = r[2]
-        logs.append({
-            "id": r[0],
-            "original_log_id": r[1],
-            "username": un,
-            "display_name": user_names.get(un, un),
-            "company": r[3],
-            "date": r[4],
-            "pay_mode": r[5],
-            "status": r[6],
-            "rate": r[7],
-            "hours": r[8],
-            "daily_pay": r[9],
-            "location": r[10] or "",
-            "notes": r[11] or ""
-        })
-
-    return jsonify({
-        "company": acct_company if role != 'admin' else "管理者全公司檢視",
-        "logs": logs,
-        "total_salary": round(total_salary, 2)
-    })
-
-@app.route('/api/accounting/work/save', methods=['POST'])
-def save_accounting_work_log():
-    role = get_user_role()
-    if role not in ['accounting', 'admin']:
-        return jsonify({"error": "Forbidden"}), 403
-
-    acct_company = get_user_company()
-    data = request.json or {}
-    log_id = data.get('id')
-    rate = float(data.get('rate', 0))
-    hours = float(data.get('hours', 0))
-    notes = data.get('notes', '').strip()
-    
-    pay_mode = data.get('pay_mode', 'day')
-    status = data.get('status', 'full')
-
-    daily_pay = 0.0
-    if pay_mode == 'day':
-        multipliers = {'half': 0.5, 'full': 1.0, 'ot_1.5': 1.5, 'ot_2.0': 2.0, 'ot_3.0': 3.0}
-        daily_pay = rate * multipliers.get(status, 1.0)
-    else:
-        daily_pay = rate * hours
-
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-
-    if role != 'admin':
-        c.execute('SELECT company FROM accounting_work_logs WHERE id=?', (log_id,))
-        row = c.fetchone()
-        if not row or row[0] != acct_company:
-            conn.close()
-            return jsonify({"error": "Forbidden"}), 403
-
-    c.execute('''
-        UPDATE accounting_work_logs 
-        SET rate=?, hours=?, daily_pay=?, status=?, notes=?
-        WHERE id=?
-    ''', (rate, hours, daily_pay, status, notes, log_id))
-
-    conn.commit()
-    conn.close()
-    return jsonify({"success": True})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
