@@ -1,293 +1,560 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>工時與薪資記錄系統</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>工時與薪資記錄系統</title>
+  <link rel="manifest" href="/manifest.json">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 </head>
-<body class="bg-gray-100 min-h-screen">
-    <!-- 主容器：寬螢幕滿版 -->
-    <div class="w-full px-4 py-6 md:px-8">
+<body class="bg-[#FAF9F6] text-[#191919] min-h-screen p-2 sm:p-8 font-sans antialiased">
+  <div id="app" class="max-w-4xl mx-auto space-y-4">
+    
+    <!-- 頁頭資訊 -->
+    <header class="flex justify-between items-baseline border-b border-[#E5E5E5] pb-3">
+      <div>
+        <h1 class="text-lg sm:text-3xl font-semibold tracking-tight text-[#111111]">工時與薪資記錄系統</h1>
+        <p class="text-[10px] sm:text-xs text-[#737373] font-mono uppercase">
+          目前帳號: <span class="text-black font-bold">{{ currentUser }}</span>
+          <span v-if="isAdmin" class="ml-2 bg-black text-white px-1 text-[9px]">管理者</span>
+        </p>
+      </div>
+      <div class="flex items-center space-x-3 font-mono text-xs">
+        <button @click="showSettings = true" class="text-[#737373] hover:text-black">[偏好與公司設定]</button>
+        <button @click="logout" class="text-red-500 hover:underline">[登出]</button>
+      </div>
+    </header>
+
+    <!-- 管理者切換目標帳號 -->
+    <div v-if="isAdmin" class="bg-[#EAEAEA] p-2 border border-[#CCCCCC] font-mono text-xs flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <span class="font-bold text-[#333]">管理目標帳號:</span>
+        <select v-model="targetUser" @change="onTargetUserChange" class="bg-white border p-1 text-xs">
+          <option :value="currentUser">自己 ({{ currentUser }})</option>
+          <option v-for="u in filteredUserList" :key="u" :value="u">{{ u }}</option>
+        </select>
+      </div>
+      <button 
+        v-if="targetUser && targetUser.toLowerCase() !== currentUser.toLowerCase()" 
+        @click="deleteUser(targetUser)" 
+        class="bg-red-600 text-white px-2 py-1 text-[10px] font-bold hover:bg-red-700"
+      >
+        刪除帳號 {{ targetUser }}
+      </button>
+    </div>
+
+    <!-- 月份統計摘要 -->
+    <main class="space-y-3">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2">
+        <div class="flex items-center space-x-3">
+          <h2 class="text-base sm:text-xl font-medium text-[#111111]">{{ currentYear }} 年 {{ currentMonth }} 月</h2>
+          <div class="flex space-x-1 font-mono text-xs text-[#737373]">
+            <button @click="changeMonth(-1)" class="hover:text-black px-1">上個月</button>
+            <span>/</span>
+            <button @click="changeMonth(1)" class="hover:text-black px-1">下個月</button>
+          </div>
+        </div>
+
+        <div class="text-xs sm:text-sm font-mono text-right">
+          <div><span class="text-[#737373]">總工時: </span><span class="font-bold">{{ formatDuration(summary.total_hours) }}</span></div>
+          <div><span class="text-[#737373]">總薪資: </span><span class="font-bold">{{ userSettings.currency }}{{ summary.total_salary.toLocaleString() }}</span></div>
+        </div>
+      </div>
+
+      <!-- 各公司統計小計 -->
+      <div v-if="Object.keys(summary.by_company || {}).length > 0" class="bg-white border p-3 font-mono text-xs space-y-1">
+        <div class="font-bold text-[#737373] text-[10px] border-b pb-1 mb-1">各公司工時與薪資小計:</div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div v-for="(stat, compName) in summary.by_company" :key="compName" class="flex justify-between bg-[#FAF9F6] p-1.5 border">
+            <span class="font-bold text-[#111111]">🏢 {{ compName }}</span>
+            <span>{{ formatDuration(stat.hours) }} | <span class="font-bold">{{ userSettings.currency }}{{ stat.salary.toLocaleString() }}</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 月曆表格 -->
+      <div class="border-t border-l border-[#E5E5E5] grid grid-cols-7 text-xs font-mono w-full">
+        <div v-for="d in ['日','一','二','三','四','五','六']" :key="d" class="p-1 border-r border-b border-[#E5E5E5] text-[10px] text-[#A3A3A3] text-center">
+          週{{ d }}
+        </div>
+        <div v-for="blank in firstDayOfWeek" :key="'b-'+blank" class="min-h-[60px] sm:min-h-[85px] border-r border-b border-[#E5E5E5] bg-[#F5F5F3]"></div>
         
-        <!-- 頂部標題與帳號列 -->
-        <div class="flex justify-between items-center border-b pb-4 mb-4">
+        <div 
+          v-for="day in daysInMonth" 
+          :key="day"
+          @click="openDayModal(day)"
+          :class="[
+            'min-h-[60px] sm:min-h-[85px] p-1 border-r border-b border-[#E5E5E5] cursor-pointer flex flex-col justify-between overflow-hidden',
+            getLogs(day).length > 0 ? 'bg-[#111111] text-white' : 'hover:bg-[#F0F0EE]'
+          ]"
+        >
+          <div class="flex justify-between items-center w-full">
+            <span class="text-[10px] font-bold">{{ day }}</span>
+            <span v-if="getLogs(day).length > 0" class="text-[8px] bg-[#333] text-white px-1">
+              {{ getLogs(day).length }} 筆工作
+            </span>
+          </div>
+          
+          <div v-if="getLogs(day).length > 0" class="mt-1 space-y-1 w-full overflow-hidden">
+            <div v-for="item in getLogs(day)" :key="item.id" class="border-t border-gray-700 pt-0.5 text-[8px] truncate">
+              <span class="text-gray-400">[{{ item.company }}]</span>
+              <span class="ml-0.5 text-white">+{{ userSettings.currency }}{{ item.daily_pay }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- 工作紀錄彈窗 Modal -->
+    <div v-if="selectedDay" class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+      <div class="bg-[#FAF9F6] border border-[#111111] p-4 max-w-md w-full space-y-4 max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center border-b pb-2">
+          <h3 class="text-xs font-mono font-bold text-[#111111]">
+            日期紀錄 ({{ targetUser || currentUser }}) - {{ formatDate(selectedDay) }}
+          </h3>
+          <button @click="selectedDay = null" class="font-bold">✕</button>
+        </div>
+
+        <div class="space-y-2 max-h-40 overflow-y-auto">
+          <div v-if="dayLogs.length === 0" class="text-xs text-[#737373] font-mono py-2 text-center">當天尚無紀錄</div>
+          <div v-for="item in dayLogs" :key="item.id" class="p-2 border border-[#E5E5E5] bg-white flex justify-between items-center text-xs font-mono">
             <div>
-                <h1 class="text-3xl font-bold text-gray-800 inline-block mr-4">工時與薪資記錄系統</h1>
-                <button onclick="openSettingsModal()" class="text-sm text-gray-500 hover:text-gray-700 mr-2">[偏好與公司設定]</button>
-                <button onclick="logout()" class="text-sm text-red-500 hover:text-red-700">[登出]</button>
+              <div class="font-bold">
+                <span class="bg-[#111111] text-white px-1 text-[9px] mr-1">{{ item.company }}</span>
+                <span>{{ item.pay_mode === 'hour' ? item.hours + '小時' : getStatusLabel(item.status) }}</span>
+              </div>
+              <div class="text-[10px] text-[#737373]">
+                薪資: <span class="text-black font-bold">{{ userSettings.currency }}{{ item.daily_pay }}</span>
+                <span v-if="item.location" class="ml-2">📍 {{ item.location }}</span>
+              </div>
             </div>
-            <div class="flex items-center space-x-2 text-sm">
-                <span class="text-gray-600">目前帳號:</span>
-                <span id="currentUsername" class="font-bold text-gray-800 uppercase">--</span>
-                <span id="currentRoleBadge" class="bg-black text-white text-xs px-2 py-0.5 rounded">管理者</span>
+            <div class="flex space-x-2">
+              <button @click="editLogItem(item)" class="text-blue-600 underline text-[10px]">編輯</button>
+              <button @click="deleteLogItem(item.id)" class="text-red-600 underline text-[10px]">刪除</button>
             </div>
+          </div>
         </div>
 
-        <!-- 審核目標員工列 -->
-        <div class="bg-gray-200/60 p-3 rounded-lg flex items-center space-x-3 mb-6">
-            <label for="employeeSelect" class="font-medium text-gray-700">審核目標員工:</label>
-            <select id="employeeSelect" onchange="handleUserChange()" class="border border-gray-300 rounded px-4 py-1.5 text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[160px]">
-                <option value="">載入中...</option>
+        <div class="border-t pt-3 space-y-3 font-mono text-xs">
+          <div class="font-bold text-[#111111] flex justify-between">
+            <span>{{ editingLogId ? '編輯工作條目' : '新增工作條目' }}</span>
+            <button v-if="editingLogId" @click="resetForm" class="text-[10px] text-gray-500 underline">取消編輯</button>
+          </div>
+
+          <div v-if="editingLogId || (userSettings.companies && userSettings.companies.length > 1)">
+            <label class="block text-[10px] text-[#737373] mb-1">選擇任職公司</label>
+            <select v-model="formCompany" class="w-full bg-white border p-1.5 text-xs font-bold">
+              <option v-for="comp in availableCompanies" :key="comp" :value="comp">{{ comp }}</option>
             </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button 
+              @click="formPayMode = 'day'" 
+              :class="['p-1.5 border text-center', formPayMode === 'day' ? 'bg-[#111111] text-white' : 'bg-white']"
+            >按日計算</button>
+            <button 
+              @click="formPayMode = 'hour'" 
+              :class="['p-1.5 border text-center', formPayMode === 'hour' ? 'bg-[#111111] text-white' : 'bg-white']"
+            >按時計算</button>
+          </div>
+
+          <div v-if="formPayMode === 'day'" class="space-y-2">
+            <div class="grid grid-cols-3 gap-1">
+              <button 
+                v-for="(val, key) in statusOptions" 
+                :key="key"
+                @click="formStatus = key"
+                :class="['p-1 border text-center text-[10px]', formStatus === key ? 'bg-[#111111] text-white' : 'bg-white']"
+              >
+                {{ val.label }}
+              </button>
+            </div>
+            <div>
+              <label class="block text-[10px] text-[#737373]">本日日薪基準 ($)</label>
+              <input v-model.number="formRate" type="number" class="w-full bg-white border p-1.5 text-xs">
+            </div>
+          </div>
+
+          <div v-if="formPayMode === 'hour'" class="space-y-2">
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[10px] text-[#737373]">時薪 ($/HR)</label>
+                <input v-model.number="formRate" type="number" class="w-full bg-white border p-1.5 text-xs">
+              </div>
+              <div>
+                <label class="block text-[10px] text-[#737373]">工作時數 (小時)</label>
+                <input v-model.number="formHours" type="number" step="0.5" class="w-full bg-white border p-1.5 text-xs">
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[10px] text-[#737373]">工作地點 / 備註</label>
+            <input v-model="formLocation" placeholder="例如：公司" class="w-full bg-white border p-1.5 text-xs">
+          </div>
+
+          <div class="flex justify-end space-x-2 pt-2">
+            <button @click="selectedDay = null" class="px-3 py-1 border text-xs">關閉</button>
+            <button @click="saveWorkItem" class="px-3 py-1 bg-[#111111] text-white text-xs">
+              {{ editingLogId ? '更新紀錄' : '儲存新增' }}
+            </button>
+          </div>
         </div>
 
-        <!-- 年月切換與總數資訊 -->
-        <div class="mb-6">
-            <div class="flex items-center space-x-6 mb-2">
-                <span id="currentYearMonth" class="text-3xl font-bold text-gray-800">-- 年 -- 月</span>
-                <div class="space-x-2 text-sm text-blue-600 font-medium">
-                    <button onclick="changeMonth(-1)" class="hover:underline">上個月</button>
-                    <span>/</span>
-                    <button onclick="changeMonth(1)" class="hover:underline">下個月</button>
-                </div>
-            </div>
-            <div class="text-gray-800 text-lg space-y-1 font-medium">
-                <div>總工時: <span id="totalHours">0 天 0 小時</span></div>
-                <div>總薪資: <span id="totalSalary">$0</span></div>
-            </div>
-        </div>
-
-        <!-- 各公司小計 -->
-        <div class="mb-6">
-            <div class="text-sm text-gray-600 mb-2 font-medium">各公司工時與薪資小計:</div>
-            <div id="companyBreakdown" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div class="bg-gray-100 p-3 rounded border text-gray-400">無紀錄</div>
-            </div>
-        </div>
-
-        <!-- 月曆視圖 -->
-        <div class="border rounded-lg bg-white overflow-hidden shadow-sm">
-            <div class="grid grid-cols-7 gap-px bg-gray-200 text-center text-sm font-medium text-gray-600 border-b">
-                <div class="bg-white py-2">週日</div>
-                <div class="bg-white py-2">週一</div>
-                <div class="bg-white py-2">週二</div>
-                <div class="bg-white py-2">週三</div>
-                <div class="bg-white py-2">週四</div>
-                <div class="bg-white py-2">週五</div>
-                <div class="bg-white py-2">週六</div>
-            </div>
-            <div id="calendarGrid" class="grid grid-cols-7 gap-px bg-gray-200">
-                <!-- 日曆格子由 JS 動態生成 -->
-            </div>
-        </div>
-
+      </div>
     </div>
 
-    <!-- 偏好與公司設定 彈出視窗 (Settings Modal) -->
-    <div id="settingsModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-xl max-w-md w-full p-6 space-y-4 shadow-xl">
-            <div class="flex justify-between items-center border-b pb-2">
-                <h3 class="text-xl font-bold text-gray-800">偏好與公司設定</h3>
-                <button onclick="closeSettingsModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
-            </div>
-            
-            <div class="space-y-4 text-sm">
-                <!-- 每日標準工時 -->
-                <div>
-                    <label class="block font-medium text-gray-700 mb-1">每日標準工時 (換算天數用)</label>
-                    <input type="number" id="settingStandardHours" value="8" class="w-full border border-gray-300 rounded px-3 py-2 text-gray-800">
-                </div>
-
-                <!-- 常用公司清單 -->
-                <div>
-                    <label class="block font-medium text-gray-700 mb-1">常用公司清單</label>
-                    <div id="companyList" class="space-y-2 mb-2">
-                        <div class="flex items-center justify-between bg-gray-50 p-2.5 rounded border">
-                            <span class="font-medium text-gray-800">策高</span>
-                            <span class="text-xs text-gray-400 border px-1.5 py-0.5 rounded bg-white">預設</span>
-                        </div>
-                        <div class="flex items-center justify-between bg-gray-50 p-2.5 rounded border">
-                            <span class="font-medium text-gray-800">海洋公園</span>
-                            <span class="text-xs text-gray-400 border px-1.5 py-0.5 rounded bg-white">預設</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 顯示樣式選項 -->
-                <div>
-                    <label class="block font-medium text-gray-700 mb-1">系統主題 / 顯示樣式</label>
-                    <select class="w-full border border-gray-300 rounded px-3 py-2 text-gray-800">
-                        <option value="light">標準明亮模式</option>
-                        <option value="dark">暗黑樣式模式</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="flex justify-end space-x-2 pt-3 border-t">
-                <button type="button" onclick="closeSettingsModal()" class="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100">關閉</button>
-                <button type="button" onclick="saveSettings()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium">儲存設定</button>
-            </div>
+    <!-- 偏好設定彈窗 Modal -->
+    <div v-if="showSettings" class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+      <div class="bg-[#FAF9F6] border border-[#111111] p-4 max-w-sm w-full space-y-3 font-mono text-xs">
+        <div class="flex justify-between items-center border-b pb-2">
+          <h3 class="font-bold text-[#111111]">帳號偏好與公司設定</h3>
+          <button @click="showSettings = false">✕</button>
         </div>
+        
+        <div class="space-y-3">
+          <div>
+            <label class="block text-[#737373] mb-1">任職公司名稱清單 (可多家)</label>
+            <div v-for="(comp, index) in settingsCompanies" :key="index" class="flex items-center space-x-1 mb-1">
+              <input v-model="settingsCompanies[index]" type="text" class="flex-1 bg-white border p-1 text-xs" placeholder="公司名稱">
+              <button @click="removeCompanyInput(index)" class="text-red-500 font-bold px-1" v-if="settingsCompanies.length > 1">✕</button>
+            </div>
+            <button @click="addCompanyInput" class="text-blue-600 underline text-[10px] mt-1">+ 新增一家公司</button>
+          </div>
+
+          <div>
+            <label class="block text-[#737373] mb-1">預設計薪模式</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button @click="userSettings.pay_mode = 'day'" :class="['p-1 border', userSettings.pay_mode === 'day' ? 'bg-black text-white' : 'bg-white']">按日計算</button>
+              <button @click="userSettings.pay_mode = 'hour'" :class="['p-1 border', userSettings.pay_mode === 'hour' ? 'bg-black text-white' : 'bg-white']">按時計算</button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[#737373] mb-1">預設單價 (日薪基礎價 或 時薪)</label>
+            <input v-model.number="userSettings.default_rate" type="number" class="w-full bg-white border p-1.5 text-xs">
+          </div>
+
+          <div>
+            <label class="block text-[#737373] mb-1">貨幣符號</label>
+            <input v-model="userSettings.currency" type="text" class="w-full bg-white border p-1.5 text-xs">
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-2 border-t">
+          <button @click="showSettings = false" class="px-3 py-1 border text-xs">取消</button>
+          <button @click="saveSettings" class="px-3 py-1 bg-[#111111] text-white text-xs">儲存設定</button>
+        </div>
+      </div>
     </div>
 
-    <!-- 系統腳本 -->
-    <script>
-        let currentDate = new Date();
-        let activeUser = '';
-        let loggedInUser = '';
+  </div>
 
-        async function init() {
-            try {
-                const meRes = await fetch('/api/me');
-                if (!meRes.ok) {
-                    window.location.href = '/login.html';
-                    return;
-                }
-                const meData = await meRes.json();
-                loggedInUser = meData.username;
-                activeUser = loggedInUser;
+  <script>
+    const { createApp, ref, onMounted, computed } = Vue;
 
-                document.getElementById('currentUsername').textContent = loggedInUser;
-                document.getElementById('currentRoleBadge').textContent = meData.role === 'admin' ? '管理者' : '一般員工';
+    createApp({
+      setup() {
+        const currentUser = ref('');
+        const isAdmin = ref(false);
+        const userList = ref([]);
+        const targetUser = ref('');
 
-                await loadUserDropdown();
-                await renderDashboard();
-            } catch (err) {
-                console.error('初始化失敗:', err);
-            }
-        }
+        const currentYear = ref(new Date().getFullYear());
+        const currentMonth = ref(new Date().getMonth() + 1);
+        
+        const summary = ref({ total_hours: 0, total_salary: 0, by_company: {} });
+        const logs = ref({});
+        
+        const userSettings = ref({
+          pay_mode: 'day',
+          default_rate: 700,
+          currency: '$',
+          companies: ['預設公司']
+        });
+        
+        const settingsCompanies = ref(['預設公司']);
+        const showSettings = ref(false);
 
-        async function loadUserDropdown() {
-            const usersRes = await fetch('/api/users');
-            const users = await usersRes.json();
+        const selectedDay = ref(null);
+        const editingLogId = ref(null);
+        const formCompany = ref('預設公司');
+        const formPayMode = ref('day');
+        const formStatus = ref('full');
+        const formRate = ref(700);
+        const formHours = ref(8);
+        const formLocation = ref('');
+
+        const statusOptions = {
+          'half': { label: '半天 (0.5x)' },
+          'full': { label: '全天 (1.0x)' },
+          'ot_1.5': { label: '加班 1.5x' },
+          'ot_2.0': { label: '加班 2.0x' },
+          'ot_3.0': { label: '加班 3.0x' }
+        };
+
+        const filteredUserList = computed(() => {
+          return userList.value.filter(u => u.toLowerCase() !== currentUser.value.toLowerCase());
+        });
+
+        const availableCompanies = computed(() => {
+          const comps = [...(userSettings.value.companies || ['預設公司'])];
+          if (formCompany.value && !comps.includes(formCompany.value)) {
+            comps.push(formCompany.value);
+          }
+          return Array.from(new Set(comps));
+        });
+
+        const formatDuration = (totalDecimalHours) => {
+          if (!totalDecimalHours || totalDecimalHours <= 0) {
+            return userSettings.value.pay_mode === 'day' ? '0 天' : '0 小時 0 分鐘';
+          }
+
+          const totalMinutes = Math.round(totalDecimalHours * 60);
+
+          if (userSettings.value.pay_mode === 'day') {
+            const days = totalDecimalHours / 8;
             
-            const selectEl = document.getElementById('employeeSelect');
-            selectEl.innerHTML = '';
-
-            users.forEach(user => {
-                const option = document.createElement('option');
-                option.value = user;
-                option.textContent = user;
-                
-                if (user.toLowerCase() === loggedInUser.toLowerCase()) {
-                    option.selected = true;
-                }
-                selectEl.appendChild(option);
-            });
-        }
-
-        function handleUserChange() {
-            const selectEl = document.getElementById('employeeSelect');
-            activeUser = selectEl.value;
-            renderDashboard();
-        }
-
-        function changeMonth(delta) {
-            currentDate.setMonth(currentDate.getMonth() + delta);
-            renderDashboard();
-        }
-
-        async function renderDashboard() {
-            const year = currentDate.getFullYear();
-            const month = currentDate.getMonth() + 1;
-
-            document.getElementById('currentYearMonth').textContent = `${year} 年 ${month} 月`;
-
-            const res = await fetch(`/api/work/${year}/${month}?target_user=${encodeURIComponent(activeUser)}`);
-            if (!res.ok) return;
-
-            const data = await res.json();
-            const summary = data.summary || { total_hours: 0, total_salary: 0, by_company: {} };
-            const logs = data.logs || {};
-
-            const days = (summary.total_hours / 8).toFixed(1).replace(/\.0$/, '');
-            const hours = summary.total_hours % 8;
-            document.getElementById('totalHours').textContent = `${days} 天 ${hours} 小時`;
-            document.getElementById('totalSalary').textContent = `$${summary.total_salary.toLocaleString()}`;
-
-            const breakdownEl = document.getElementById('companyBreakdown');
-            breakdownEl.innerHTML = '';
-            const companies = Object.keys(summary.by_company);
-
-            if (companies.length === 0) {
-                breakdownEl.innerHTML = '<div class="bg-gray-100 p-3 rounded border text-gray-400">無紀錄</div>';
-            } else {
-                companies.forEach(comp => {
-                    const compData = summary.by_company[comp];
-                    const cDays = (compData.hours / 8).toFixed(1).replace(/\.0$/, '');
-
-                    const item = document.createElement('div');
-                    item.className = 'bg-gray-100/80 p-3 rounded border flex justify-between items-center text-base';
-                    item.innerHTML = `
-                        <div class="flex items-center space-x-2">
-                            <span>🏢</span>
-                            <span class="font-bold text-gray-800">${comp}</span>
-                        </div>
-                        <div class="font-bold text-gray-900">
-                            ${cDays} 天 <span class="mx-1">|</span> $${compData.salary.toLocaleString()}
-                        </div>
-                    `;
-                    breakdownEl.appendChild(item);
-                });
+            if (days % 0.5 === 0) {
+              return `${days} 天`;
             }
 
-            renderCalendarGrid(year, month, logs);
-        }
+            const wholeDays = Math.floor(totalDecimalHours / 8);
+            const remainingMinutes = totalMinutes - (wholeDays * 8 * 60);
+            const hours = Math.floor(remainingMinutes / 60);
+            const mins = remainingMinutes % 60;
 
-        function renderCalendarGrid(year, month, logs) {
-            const gridEl = document.getElementById('calendarGrid');
-            gridEl.innerHTML = '';
+            let result = wholeDays > 0 ? `${wholeDays} 天 ` : '';
+            if (hours > 0) result += `${hours} 小時 `;
+            if (mins > 0) result += `${mins} 分鐘`;
 
-            const firstDay = new Date(year, month - 1, 1).getDay();
-            const totalDays = new Date(year, month, 0).getDate();
+            return result.trim();
+          }
 
-            for (let i = 0; i < firstDay; i++) {
-                const emptyCell = document.createElement('div');
-                emptyCell.className = 'bg-gray-50 min-h-[110px] p-2';
-                gridEl.appendChild(emptyCell);
-            }
+          const hours = Math.floor(totalMinutes / 60);
+          const mins = totalMinutes % 60;
 
-            for (let day = 1; day <= totalDays; day++) {
-                const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                const dayLogs = logs[dateKey] || [];
+          if (hours >= 8) {
+            const d = Math.floor(hours / 8);
+            const h = hours % 8;
+            let res = `${d} 天 `;
+            if (h > 0) res += `${h} 小時 `;
+            if (mins > 0) res += `${mins} 分鐘`;
+            return res.trim();
+          }
 
-                const dayCell = document.createElement('div');
-                dayCell.className = `min-h-[110px] p-2 relative flex flex-col justify-between ${
-                    dayLogs.length > 0 ? 'bg-black text-white' : 'bg-white text-gray-800'
-                }`;
+          let res = '';
+          if (hours > 0) res += `${hours} 小時 `;
+          if (mins > 0) res += `${mins} 分鐘`;
+          return res.trim() || '0 分鐘';
+        };
 
-                let topBadge = '';
-                let bottomInfo = '';
-
-                if (dayLogs.length > 0) {
-                    topBadge = `<span class="bg-gray-700 text-white text-xs px-1.5 py-0.5 rounded">${dayLogs.length} 筆工作</span>`;
-                    
-                    const comp = dayLogs[0].company || '';
-                    const salary = dayLogs[0].salary || (dayLogs[0].hours * dayLogs[0].rate) || 0;
-                    bottomInfo = `<div class="text-xs text-gray-300 font-mono">[${comp}] +$${salary}</div>`;
-                }
-
-                dayCell.innerHTML = `
-                    <div class="flex justify-between items-start">
-                        <span class="font-bold text-base">${day}</span>
-                        ${topBadge}
-                    </div>
-                    ${bottomInfo}
-                `;
-                gridEl.appendChild(dayCell);
-            }
-        }
-
-        /* 控制設定彈窗 */
-        function openSettingsModal() {
-            document.getElementById('settingsModal').classList.remove('hidden');
-        }
-
-        function closeSettingsModal() {
-            document.getElementById('settingsModal').classList.add('hidden');
-        }
-
-        function saveSettings() {
-            closeSettingsModal();
-        }
-
-        async function logout() {
-            await fetch('/api/logout', { method: 'POST' });
+        const checkAuth = (res) => {
+          if (res.status === 401) {
             window.location.href = '/login.html';
-        }
+            return false;
+          }
+          return true;
+        };
 
-        window.onload = init;
-    </script>
+        const daysInMonth = computed(() => new Date(currentYear.value, currentMonth.value, 0).getDate());
+        const firstDayOfWeek = computed(() => new Date(currentYear.value, currentMonth.value - 1, 1).getDay());
+
+        const formatDate = (day) => {
+          const m = String(currentMonth.value).padStart(2, '0');
+          const d = String(day).padStart(2, '0');
+          return `${currentYear.value}-${m}-${d}`;
+        };
+
+        const getLogs = (day) => logs.value[formatDate(day)] || [];
+        const dayLogs = computed(() => selectedDay.value ? getLogs(selectedDay.value) : []);
+        const getStatusLabel = (key) => statusOptions[key]?.label || key;
+
+        const openDayModal = (day) => {
+          selectedDay.value = day;
+          resetForm();
+        };
+
+        const resetForm = () => {
+          editingLogId.value = null;
+          const comps = userSettings.value.companies || ['預設公司'];
+          formCompany.value = comps[0] || '預設公司';
+          formPayMode.value = userSettings.value.pay_mode || 'day';
+          formStatus.value = 'full';
+          formRate.value = userSettings.value.default_rate || 700;
+          formHours.value = 8;
+          formLocation.value = '';
+        };
+
+        const editLogItem = (item) => {
+          editingLogId.value = item.id;
+          formCompany.value = item.company || '預設公司';
+          formPayMode.value = item.pay_mode;
+          formStatus.value = item.status === 'hourly' ? 'full' : item.status;
+          formRate.value = item.rate;
+          formHours.value = item.hours;
+          formLocation.value = item.location;
+        };
+
+        const saveWorkItem = async () => {
+          const res = await fetch('/api/work/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: editingLogId.value,
+              date: formatDate(selectedDay.value),
+              company: formCompany.value,
+              pay_mode: formPayMode.value,
+              status: formStatus.value,
+              rate: parseFloat(formRate.value) || 0,
+              hours: parseFloat(formHours.value) || 0,
+              location: formLocation.value,
+              target_user: targetUser.value || currentUser.value
+            })
+          });
+          if (checkAuth(res)) {
+            resetForm();
+            await loadMonthData();
+          }
+        };
+
+        const deleteLogItem = async (logId) => {
+          if (!confirm("確定要刪除這筆工作紀錄嗎？")) return;
+          const res = await fetch('/api/work/delete_item', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              log_id: logId,
+              target_user: targetUser.value || currentUser.value
+            })
+          });
+          if (checkAuth(res)) {
+            await loadMonthData();
+          }
+        };
+
+        const addCompanyInput = () => {
+          settingsCompanies.value.push('');
+        };
+
+        const removeCompanyInput = (index) => {
+          if (settingsCompanies.value.length > 1) {
+            settingsCompanies.value.splice(index, 1);
+          }
+        };
+
+        const fetchUsersList = async () => {
+          if (isAdmin.value) {
+            const uRes = await fetch('/api/admin/users');
+            if (uRes.ok) userList.value = await uRes.json();
+          }
+        };
+
+        const fetchMe = async () => {
+          const res = await fetch('/api/me');
+          if (checkAuth(res)) {
+            const data = await res.json();
+            currentUser.value = data.username;
+            isAdmin.value = data.is_admin;
+            targetUser.value = data.username;
+            await fetchUsersList();
+          }
+        };
+
+        const onTargetUserChange = async () => {
+          await loadUserSettings();
+          await loadMonthData();
+        };
+
+        const deleteUser = async (username) => {
+          if (!confirm(`確定要永久刪除使用者「${username}」以及其所有資料嗎？`)) return;
+          const res = await fetch('/api/admin/users/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_user: username })
+          });
+          if (checkAuth(res)) {
+            if (res.ok) {
+              alert(`已刪除使用者 ${username}`);
+              targetUser.value = currentUser.value;
+              await fetchUsersList();
+              await onTargetUserChange();
+            }
+          }
+        };
+
+        const loadUserSettings = async () => {
+          const uParam = targetUser.value || currentUser.value;
+          const res = await fetch(`/api/settings?target_user=${uParam}&t=${Date.now()}`);
+          if (checkAuth(res)) {
+            const data = await res.json();
+            userSettings.value = data;
+            settingsCompanies.value = [...(data.companies || ['預設公司'])];
+          }
+        };
+
+        const saveSettings = async () => {
+          const validCompanies = settingsCompanies.value.map(c => typeof c === 'string' ? c.trim() : c).filter(c => c);
+          const res = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              pay_mode: userSettings.value.pay_mode,
+              default_rate: parseFloat(userSettings.value.default_rate) || 0, 
+              currency: userSettings.value.currency,
+              companies: validCompanies.length > 0 ? validCompanies : ['預設公司'],
+              target_user: targetUser.value || currentUser.value
+            })
+          });
+          if (checkAuth(res)) {
+            showSettings.value = false;
+            await loadUserSettings();
+            await loadMonthData();
+          }
+        };
+
+        const loadMonthData = async () => {
+          const uParam = targetUser.value || currentUser.value;
+          const url = `/api/work/${currentYear.value}/${currentMonth.value}?target_user=${uParam}&t=${Date.now()}`;
+          const res = await fetch(url);
+          if (checkAuth(res)) {
+            const data = await res.json();
+            logs.value = data.logs;
+            summary.value = data.summary;
+          }
+        };
+
+        const logout = async () => {
+          await fetch('/api/logout', { method: 'POST' });
+          window.location.href = '/login.html';
+        };
+
+        const changeMonth = (delta) => {
+          currentMonth.value += delta;
+          if (currentMonth.value > 12) { currentMonth.value = 1; currentYear.value++; }
+          if (currentMonth.value < 1) { currentMonth.value = 12; currentYear.value--; }
+          loadMonthData();
+        };
+
+        onMounted(async () => {
+          await fetchMe();
+          await loadUserSettings();
+          await loadMonthData();
+        });
+
+        return {
+          currentUser, isAdmin, userList, filteredUserList, targetUser, onTargetUserChange,
+          currentYear, currentMonth, daysInMonth, firstDayOfWeek,
+          summary, userSettings, settingsCompanies, showSettings, saveSettings, changeMonth,
+          addCompanyInput, removeCompanyInput, formatDuration, availableCompanies,
+          selectedDay, openDayModal, dayLogs, editingLogId, resetForm, editLogItem, deleteLogItem,
+          formCompany, formPayMode, formStatus, formRate, formHours, formLocation, saveWorkItem,
+          statusOptions, formatDate, getLogs, getStatusLabel, logout, loadMonthData, deleteUser
+        };
+      }
+    }).mount('#app');
+  </script>
 </body>
 </html>
