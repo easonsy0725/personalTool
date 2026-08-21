@@ -21,7 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_FILE = "dashboard/data/dashboard.db"
+DB_FILE = "data/dashboard.db"
 
 WORK_TYPES = {
     "off": {"days": 0.0, "multiplier": 0.0, "label": "休假"},
@@ -33,7 +33,7 @@ WORK_TYPES = {
 }
 
 def init_db():
-    os.makedirs("dashboard/data", exist_ok=True)
+    os.makedirs("data", exist_ok=True)
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
