@@ -52,6 +52,18 @@ def init_db():
                 companies TEXT DEFAULT '預設公司'
             )
         ''')
+        
+        # 預設建立測試帳號 (密碼均為 123456)
+        try:
+            conn.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", 
+                         ('admin', generate_password_hash('123456'), 'admin'))
+            conn.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", 
+                         ('user1', generate_password_hash('123456'), 'employee'))
+            conn.execute("INSERT INTO users (username, password, role, company) VALUES (?, ?, ?, ?)", 
+                         ('acc_ocean', generate_password_hash('123456'), 'accounting', '海洋公園'))
+        except sqlite3.IntegrityError:
+            pass
+            
         conn.commit()
 
 init_db()
@@ -64,53 +76,79 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+# --- 根目錄與靜態頁面路由 ---
+@app.route('/')
+def index():
+    if 'username' not in session:
+        return redirect('/login.html')
+    return app.send_static_file('index.html')
+
+@app.route('/login.html')
+def login_page():
+    return app.send_static_file('login.html')
+
+# --- 身分驗證 API ---
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+
+    with get_db() as conn:
+        user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        if user and check_password_hash(user['password'], password):
+            session['username'] = user['username']
+            session['role'] = user['role']
+            session['company'] = user['company']
+            return jsonify({'status': 'success'})
+        return jsonify({'error': '帳號或密碼錯誤'}), 400
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({'status': 'success'})
+
 @app.route('/api/me')
 @login_required
 def get_me():
-    with get_db() as conn:
-        user = conn.execute("SELECT username, role, company FROM users WHERE username = ?", (session['username'],)).fetchone()
-        return jsonify({
-            'username': user['username'],
-            'role': user['role'],
-            'company': user['company']
-        })
+    return jsonify({
+        'username': session['username'],
+        'role': session.get('role', 'employee'),
+        'company': session.get('company', '')
+    })
 
 @app.route('/api/users')
 @login_required
 def get_users():
-    # 管理員與會計皆可取得員工選單
     if session.get('role') not in ['admin', 'accounting']:
         return jsonify([])
     with get_db() as conn:
         users = conn.execute("SELECT username FROM users WHERE role = 'employee'").fetchall()
         return jsonify([u['username'] for u in users])
 
+# --- 工時紀錄 API ---
 @app.route('/api/work/<int:year>/<int:month>')
 @login_required
 def get_work_logs(year, month):
     current_user = session['username']
     user_role = session.get('role', 'employee')
     user_company = session.get('company')
-    
     target_user = request.args.get('target_user', current_user)
     
-    # 權限判定：一般員工只能看自己
     if user_role == 'employee' and target_user != current_user:
         target_user = current_user
 
     month_str = f"{year}-{month:02d}"
     
     with get_db() as conn:
-        # 會計視角處理
         if user_role == 'accounting':
-            # 只抓取該會計所屬公司的資料
+            # 會計帳號僅讀取該公司且屬於會計修改層 (source='accounting') 或該公司的員工申報
             query = """
                 SELECT * FROM work_logs 
                 WHERE username = ? AND date LIKE ? AND company = ?
             """
             rows = conn.execute(query, (target_user, f"{month_str}%", user_company)).fetchall()
         else:
-            # 一般員工/管理員：抓取該使用者所有的申報資料 (source='employee')
             query = """
                 SELECT * FROM work_logs 
                 WHERE username = ? AND date LIKE ? AND source = 'employee'
@@ -163,7 +201,6 @@ def save_work():
         company = data.get('company', '預設公司')
         source = 'employee'
     elif user_role == 'accounting':
-        # 會計強制寫入自己綁定的公司與 accounting 來源
         company = user_company
         source = 'accounting'
     else:
@@ -178,7 +215,6 @@ def save_work():
     date = data.get('date')
     log_id = data.get('id')
 
-    # 計算薪資
     if pay_mode == 'day':
         multipliers = {'half': 0.5, 'full': 1.0, 'ot_1.5': 1.5, 'ot_2.0': 2.0, 'ot_3.0': 3.0}
         daily_pay = rate * multipliers.get(status, 1.0)
@@ -241,4 +277,5 @@ def handle_settings():
             return jsonify({'pay_mode': 'day', 'default_rate': 700, 'currency': '$', 'companies': ['預設公司']})
 
 if __name__ == '__main__':
+    # 務必包含 host='0.0.0.0' 以便 Docker 對外通訊
     app.run(host='0.0.0.0', port=5000, debug=True)
