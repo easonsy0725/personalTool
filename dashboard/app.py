@@ -6,13 +6,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = 'super_secret_key_change_me_in_production'
-# 確保 Cookie 在跨網域與 HTTP 環境下皆能傳送
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = False
 
 DB_FILE = "data/dashboard.db"
 
-# 允許 CORS 跨網域請求 (解決前端 fetch 報錯問題)
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
@@ -58,11 +56,32 @@ def init_db():
         )
     ''')
     
-    # 清除舊的 eason 帳號資料
+    # 檢查並自動修復 users 表格欄位相容性
+    c.execute("PRAGMA table_info(users)")
+    user_cols = [col[1] for col in c.fetchall()]
+    if 'password' not in user_cols:
+        if 'password_hash' in user_cols:
+            c.execute("ALTER TABLE users RENAME COLUMN password_hash TO password")
+        else:
+            c.execute("ALTER TABLE users ADD COLUMN password TEXT")
+
+    # 檢查並修復 work_logs 表格欄位
+    c.execute("PRAGMA table_info(work_logs)")
+    work_cols = [col[1] for col in c.fetchall()]
+    if 'company' not in work_cols:
+        c.execute("ALTER TABLE work_logs ADD COLUMN company TEXT DEFAULT '預設公司'")
+
+    # 檢查並修復 user_settings 表格欄位
+    c.execute("PRAGMA table_info(user_settings)")
+    settings_cols = [col[1] for col in c.fetchall()]
+    if 'companies' not in settings_cols:
+        c.execute("ALTER TABLE user_settings ADD COLUMN companies TEXT DEFAULT '[\"預設公司\"]'")
+
+    # 清除舊的 eason 帳號
     c.execute("DELETE FROM users WHERE username='eason'")
     c.execute("DELETE FROM user_settings WHERE username='eason'")
 
-    # 強制重置 admin 帳號密碼為 admin
+    # 強制重置 admin 帳號 (密碼為 admin)
     hashed_pwd = generate_password_hash("admin")
     c.execute("DELETE FROM users WHERE username='admin'")
     c.execute("INSERT INTO users (username, password, is_admin) VALUES ('admin', ?, 1)", (hashed_pwd,))
@@ -117,14 +136,15 @@ def login():
         row = c.fetchone()
         conn.close()
 
-        if row and check_password_hash(row[0], password):
+        if row and row[0] and check_password_hash(row[0], password):
             session['username'] = username
             session['is_admin'] = row[1]
             return jsonify({"success": True, "username": username, "is_admin": row[1]})
         
         return jsonify({"success": False, "message": "帳號或密碼錯誤"}), 401
     except Exception as e:
-        return jsonify({"success": False, "message": f"伺服器錯誤: {str(e)}"}), 500
+        print(f"Login Error: {e}")
+        return jsonify({"success": False, "message": f"資料庫異常，請嘗試重新整理。細節: {str(e)}"}), 500
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
