@@ -6,11 +6,12 @@
   <title>工時與薪資記錄系統</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <link rel="manifest" href="/manifest.json">
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen p-4 sm:p-8 font-sans">
   <div id="app" class="max-w-4xl mx-auto space-y-6">
     
-    <!-- 頂部頁首 -->
+    <!-- 頂部 Header -->
     <header class="flex justify-between items-center bg-white p-5 rounded-xl shadow-sm border border-slate-200">
       <div>
         <h1 class="text-xl font-bold text-slate-800">👷 工時管理 Dashboard</h1>
@@ -19,33 +20,98 @@
           <span class="text-slate-400 font-mono">({{ currentUser }})</span>
         </p>
       </div>
-      <button @click="logout" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-3.5 py-2 rounded-lg border border-red-200 font-medium transition">
-        登出
-      </button>
+      <div class="flex items-center space-x-2">
+        <a v-if="role === 'accounting' || isAdmin" href="/accounting.html" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-2 rounded-lg border border-blue-200 font-medium transition">
+          會計審核頁面
+        </a>
+        <button @click="logout" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-3 py-2 rounded-lg border border-red-200 font-medium transition">
+          登出
+        </button>
+      </div>
     </header>
 
-    <!-- 使用者個人自訂 Display Name 設定區 -->
-    <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-      <h3 class="text-sm font-bold text-slate-800 mb-3">👤 個人資料設定 (User Self-Service)</h3>
-      <form @submit.prevent="updateMyProfile" class="flex items-center gap-3">
-        <div class="flex-1 max-w-xs">
-          <label class="block text-[11px] font-bold text-slate-400 mb-1">自訂顯示名稱 (Display Name)</label>
-          <input 
-            v-model="myDisplayName" 
-            type="text" 
-            required
-            placeholder="請輸入欲顯示的姓名"
-            class="w-full border border-slate-300 px-3 py-1.5 rounded text-xs focus:outline-none focus:border-blue-500">
+    <!-- 月份切換與本月統計 -->
+    <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+      <div class="flex items-center space-x-3">
+        <h2 class="text-lg font-bold text-slate-800">{{ currentYear }} 年 {{ currentMonth }} 月</h2>
+        <div class="flex items-center space-x-1 font-mono text-xs">
+          <button @click="changeMonth(-1)" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 transition">◀ 上個月</button>
+          <button @click="changeMonth(1)" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 transition">下個月 ▶</button>
         </div>
-        <button 
-          type="submit" 
-          class="mt-5 bg-slate-900 hover:bg-black text-white px-4 py-1.5 rounded text-xs font-medium transition">
-          更新個人姓名
-        </button>
-      </form>
+      </div>
+      <div class="flex space-x-4 text-xs font-mono">
+        <div class="bg-slate-50 px-3 py-2 rounded border border-slate-200">
+          <span class="text-slate-400 block">本月總工時</span>
+          <span class="text-sm font-bold text-slate-800">{{ summary.total_hours }} hrs</span>
+        </div>
+        <div class="bg-emerald-50 px-3 py-2 rounded border border-emerald-200">
+          <span class="text-emerald-600 block">本月預估薪資</span>
+          <span class="text-sm font-bold text-emerald-700">${{ summary.total_salary.toLocaleString() }}</span>
+        </div>
+      </div>
     </section>
 
-    <!-- 管理者專區：修改所有人的 Display Name 與權限 -->
+    <!-- 日曆看板 -->
+    <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+      <h3 class="text-sm font-bold text-slate-700 mb-4">📅 月考勤日曆 (點擊日期填寫/修改工時)</h3>
+      <div class="grid grid-cols-7 gap-1 sm:gap-2 text-center text-xs font-bold text-slate-400 mb-2">
+        <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+      </div>
+      <div class="grid grid-cols-7 gap-1 sm:gap-2">
+        <div v-for="blank in firstDayOfWeek" :key="'b-'+blank" class="h-20 bg-slate-50/50 rounded-lg"></div>
+        <div 
+          v-for="day in daysInMonth" 
+          :key="day" 
+          @click="openModal(formatDate(day))"
+          class="h-20 p-1.5 border border-slate-100 rounded-lg hover:border-blue-400 hover:bg-blue-50/30 cursor-pointer transition flex flex-col justify-between relative">
+          <span class="font-mono text-xs font-bold text-slate-600">{{ day }}</span>
+          <div v-if="logs[formatDate(day)]" class="space-y-0.5 overflow-hidden">
+            <div 
+              v-for="item in logs[formatDate(day)]" 
+              :key="item.id" 
+              class="text-[10px] bg-blue-100 text-blue-800 px-1 py-0.5 rounded truncate font-medium">
+              {{ item.company }}: ${{ item.daily_pay }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 個人設定頁面 -->
+    <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4">
+      <h3 class="text-sm font-bold text-slate-800">⚙️ 個人偏好與薪資設定</h3>
+      
+      <div class="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-400 mb-1">自訂顯示名稱 (Display Name)</label>
+          <div class="flex gap-2">
+            <input 
+              v-model="myDisplayName" 
+              type="text" 
+              class="border border-slate-300 px-3 py-1.5 rounded text-xs focus:outline-none focus:border-blue-500 flex-1">
+            <button @click="updateMyProfile" class="bg-slate-900 hover:bg-black text-white px-3 py-1.5 rounded text-xs font-medium transition">
+              儲存名稱
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-400 mb-1">預設計薪模式與單價</label>
+          <div class="flex gap-2">
+            <select v-model="settings.pay_mode" class="border border-slate-300 px-2 py-1.5 rounded text-xs">
+              <option value="day">按日計薪</option>
+              <option value="hour">按小時薪</option>
+            </select>
+            <input v-model.number="settings.default_rate" type="number" class="w-24 border border-slate-300 px-2 py-1.5 rounded text-xs">
+            <button @click="saveSettings" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-medium transition">
+              儲存設定
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 管理者控制台 -->
     <section v-if="isAdmin" class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-3">
       <div class="flex justify-between items-center border-b border-slate-100 pb-3">
         <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
@@ -70,28 +136,20 @@
             <tr v-for="user in allUsers" :key="user.username" class="hover:bg-slate-50">
               <td class="p-2.5 font-bold text-slate-700">{{ user.username }}</td>
               <td class="p-2.5 font-sans">
-                <input 
-                  v-model="user.display_name" 
-                  type="text" 
-                  class="w-full max-w-[150px] bg-white border border-slate-300 px-2 py-1 rounded text-xs focus:outline-none focus:border-blue-500">
+                <input v-model="user.display_name" type="text" class="w-full max-w-[150px] border border-slate-300 px-2 py-1 rounded text-xs">
               </td>
               <td class="p-2.5 font-sans">
-                <select v-model="user.role" class="bg-white border border-slate-300 px-2 py-1 rounded text-xs focus:outline-none focus:border-blue-500">
+                <select v-model="user.role" class="border border-slate-300 px-2 py-1 rounded text-xs">
                   <option value="employee">一般員工</option>
                   <option value="accounting">會計審核員</option>
                   <option value="admin">管理者</option>
                 </select>
               </td>
               <td class="p-2.5 font-sans">
-                <input 
-                  v-model="user.company" 
-                  type="text" 
-                  class="w-full max-w-[120px] bg-white border border-slate-300 px-2 py-1 rounded text-xs focus:outline-none focus:border-blue-500">
+                <input v-model="user.company" type="text" class="w-full max-w-[120px] border border-slate-300 px-2 py-1 rounded text-xs">
               </td>
               <td class="p-2.5 text-center font-sans">
-                <button 
-                  @click="updateUserByAdmin(user)" 
-                  class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-[11px] font-medium transition">
+                <button @click="updateUserByAdmin(user)" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-[11px] font-medium transition">
                   儲存
                 </button>
               </td>
@@ -101,18 +159,84 @@
       </div>
     </section>
 
+    <!-- 工時新增/編輯 Modal -->
+    <div v-if="showModal" class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+      <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+        <div class="flex justify-between items-center border-b pb-3">
+          <h3 class="font-bold text-slate-800">登記工時 - {{ selectedDate }}</h3>
+          <button @click="showModal = false" class="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+        </div>
+
+        <form @submit.prevent="saveWorkLog" class="space-y-3 text-xs">
+          <div>
+            <label class="block text-slate-500 mb-1">公司名稱</label>
+            <input v-model="form.company" type="text" required class="w-full border border-slate-300 px-3 py-2 rounded">
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-slate-500 mb-1">計薪模式</label>
+              <select v-model="form.pay_mode" class="w-full border border-slate-300 px-2 py-2 rounded">
+                <option value="day">日薪</option>
+                <option value="hour">時薪</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-500 mb-1">單價 ($)</label>
+              <input v-model.number="form.rate" type="number" required class="w-full border border-slate-300 px-3 py-2 rounded">
+            </div>
+          </div>
+
+          <div v-if="form.pay_mode === 'day'">
+            <label class="block text-slate-500 mb-1">出勤類型</label>
+            <select v-model="form.status" class="w-full border border-slate-300 px-2 py-2 rounded">
+              <option value="full">全天 (1.0x)</option>
+              <option value="half">半天 (0.5x)</option>
+              <option value="ot_1.5">加班 (1.5x)</option>
+              <option value="ot_2.0">加班 (2.0x)</option>
+            </select>
+          </div>
+
+          <div v-else>
+            <label class="block text-slate-500 mb-1">工作時數 (Hours)</label>
+            <input v-model.number="form.hours" type="number" step="0.5" required class="w-full border border-slate-300 px-3 py-2 rounded">
+          </div>
+
+          <div>
+            <label class="block text-slate-500 mb-1">工作地點/備註</label>
+            <input v-model="form.location" type="text" class="w-full border border-slate-300 px-3 py-2 rounded">
+          </div>
+
+          <div class="pt-3 flex justify-end space-x-2">
+            <button type="button" @click="showModal = false" class="px-4 py-2 bg-slate-100 text-slate-600 rounded">取消</button>
+            <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded font-medium">儲存紀錄</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
   </div>
 
   <script>
-    const { createApp, ref, onMounted } = Vue;
+    const { createApp, ref, computed, onMounted } = Vue;
 
     createApp({
       setup() {
         const currentUser = ref('');
         const currentDisplayName = ref('');
         const myDisplayName = ref('');
+        const role = ref('employee');
         const isAdmin = ref(false);
+        const currentYear = ref(new Date().getFullYear());
+        const currentMonth = ref(new Date().getMonth() + 1);
+        const logs = ref({});
+        const summary = ref({ total_hours: 0, total_salary: 0 });
         const allUsers = ref([]);
+        const showModal = ref(false);
+        const selectedDate = ref('');
+        
+        const settings = ref({ pay_mode: 'day', default_rate: 700 });
+        const form = ref({ company: '預設公司', pay_mode: 'day', rate: 700, status: 'full', hours: 8, location: '' });
 
         const fetchMe = async () => {
           const res = await fetch('/api/me');
@@ -121,7 +245,36 @@
           currentUser.value = data.username;
           currentDisplayName.value = data.display_name;
           myDisplayName.value = data.display_name;
+          role.value = data.role;
           isAdmin.value = data.is_admin;
+        };
+
+        const loadMonthLogs = async () => {
+          const res = await fetch(`/api/work/${currentYear.value}/${currentMonth.value}`);
+          if (res.ok) {
+            const data = await res.json();
+            logs.value = data.logs;
+            summary.value = data.summary;
+          }
+        };
+
+        const loadSettings = async () => {
+          const res = await fetch('/api/settings');
+          if (res.ok) {
+            const data = await res.json();
+            settings.value = data;
+            form.value.rate = data.default_rate;
+            form.value.pay_mode = data.pay_mode;
+          }
+        };
+
+        const saveSettings = async () => {
+          await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings.value)
+          });
+          alert('設定已儲存');
         };
 
         const updateMyProfile = async () => {
@@ -130,22 +283,16 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ display_name: myDisplayName.value })
           });
-
           if (res.ok) {
-            alert('個人顯示名稱更新成功！');
+            alert('個人姓名已更新');
             await fetchMe();
-            if (isAdmin.value) loadAdminUsers();
-          } else {
-            alert('更新失敗');
           }
         };
 
         const loadAdminUsers = async () => {
           if (!isAdmin.value) return;
           const res = await fetch('/api/admin/users');
-          if (res.ok) {
-            allUsers.value = await res.json();
-          }
+          if (res.ok) allUsers.value = await res.json();
         };
 
         const updateUserByAdmin = async (user) => {
@@ -159,14 +306,45 @@
               company: user.company
             })
           });
-
           if (res.ok) {
             alert(`已成功更新 ${user.username} 的資料！`);
             await fetchMe();
             await loadAdminUsers();
-          } else {
-            alert('更新失敗');
           }
+        };
+
+        const openModal = (dateStr) => {
+          selectedDate.value = dateStr;
+          showModal.value = true;
+        };
+
+        const saveWorkLog = async () => {
+          const payload = { ...form.value, date: selectedDate.value };
+          const res = await fetch('/api/work/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (res.ok) {
+            showModal.value = false;
+            loadMonthLogs();
+          }
+        };
+
+        const daysInMonth = computed(() => new Date(currentYear.value, currentMonth.value, 0).getDate());
+        const firstDayOfWeek = computed(() => new Date(currentYear.value, currentMonth.value - 1, 1).getDay());
+        
+        const formatDate = (day) => {
+          const m = String(currentMonth.value).padStart(2, '0');
+          const d = String(day).padStart(2, '0');
+          return `${currentYear.value}-${m}-${d}`;
+        };
+
+        const changeMonth = (delta) => {
+          currentMonth.value += delta;
+          if (currentMonth.value > 12) { currentMonth.value = 1; currentYear.value++; }
+          if (currentMonth.value < 1) { currentMonth.value = 12; currentYear.value--; }
+          loadMonthLogs();
         };
 
         const logout = async () => {
@@ -176,14 +354,15 @@
 
         onMounted(async () => {
           await fetchMe();
-          if (isAdmin.value) {
-            await loadAdminUsers();
-          }
+          await loadSettings();
+          await loadMonthLogs();
+          if (isAdmin.value) await loadAdminUsers();
         });
 
         return {
-          currentUser, currentDisplayName, myDisplayName, isAdmin, allUsers,
-          updateMyProfile, loadAdminUsers, updateUserByAdmin, logout
+          currentUser, currentDisplayName, myDisplayName, role, isAdmin, currentYear, currentMonth,
+          logs, summary, allUsers, showModal, selectedDate, settings, form, daysInMonth, firstDayOfWeek,
+          formatDate, changeMonth, openModal, saveWorkLog, saveSettings, updateMyProfile, loadAdminUsers, updateUserByAdmin, logout
         };
       }
     }).mount('#app');
