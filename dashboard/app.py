@@ -1,16 +1,11 @@
 import os
 import sqlite3
 import json
-from fastapi import FastAPI, Request, HTTPException, Depends, status
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from passlib.hash import pbkdf2_sha256
+from flask import Flask, request, jsonify, session, send_from_directory
+from werkzeug.security import generate_password_hash, check_password_hash
 
-app = FastAPI()
-
-# 靜態檔案掛載
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
+app = Flask(__name__, static_folder='static')
+app.secret_key = 'super_secret_key_change_me_in_production'
 DB_FILE = "data/dashboard.db"
 
 def init_db():
@@ -49,7 +44,7 @@ def init_db():
         )
     ''')
     
-    # 檢查並補齊 missing 欄位
+    # 補齊新欄位
     c.execute("PRAGMA table_info(work_logs)")
     columns = [col[1] for col in c.fetchall()]
     if 'company' not in columns:
@@ -63,7 +58,7 @@ def init_db():
     # 初始化預設管理者
     c.execute("SELECT * FROM users WHERE username='eason'")
     if not c.fetchone():
-        hashed_pwd = pbkdf2_sha256.hash("eason")
+        hashed_pwd = generate_password_hash("eason")
         c.execute("INSERT INTO users (username, password, is_admin) VALUES (?, ?, 1)", ("eason", hashed_pwd))
         c.execute("INSERT OR IGNORE INTO user_settings (username, pay_mode, default_rate, currency, companies) VALUES (?, 'day', 700, '$', '[\"預設公司\"]')", ("eason",))
 
@@ -72,82 +67,79 @@ def init_db():
 
 init_db()
 
-def get_current_user_from_cookie(request: Request):
-    user = request.cookies.get("username")
+def get_current_user():
+    return session.get('username')
+
+def is_admin():
+    return session.get('is_admin', 0) == 1
+
+def check_permission(target_user):
+    user = get_current_user()
     if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    return user
+        return False
+    if user == target_user or is_admin():
+        return True
+    return False
 
-def check_permission(request: Request, target_user: str):
-    user = get_current_user_from_cookie(request)
-    is_admin = request.cookies.get("is_admin") == "1"
-    if user == target_user or is_admin:
-        return user
-    raise HTTPException(status_code=403, detail="Forbidden")
+@app.route('/')
+def serve_index():
+    if not get_current_user():
+        return send_from_directory('static', 'login.html')
+    return send_from_directory('static', 'index.html')
 
-@app.get("/", response_class=HTMLResponse)
-async def serve_index(request: Request):
-    user = request.cookies.get("username")
-    if not user:
-        return FileResponse('static/login.html')
-    return FileResponse('static/index.html')
+@app.route('/manifest.json')
+def serve_manifest():
+    return send_from_directory('static', 'manifest.json')
 
-@app.get("/manifest.json")
-async def serve_manifest():
-    return FileResponse('static/manifest.json')
-
-@app.post("/api/login")
-async def login(request: Request):
-    data = await request.json()
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.json or {}
     username = data.get('username', '').strip()
     password = data.get('password', '').strip()
-
+    
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT password, is_admin FROM users WHERE username=?", (username,))
     row = c.fetchone()
     conn.close()
 
-    if row and pbkdf2_sha256.verify(password, row[0]):
-        response = JSONResponse({"success": True, "username": username, "is_admin": row[1]})
-        response.set_cookie(key="username", value=username, httponly=True)
-        response.set_cookie(key="is_admin", value=str(row[1]), httponly=True)
-        return response
+    if row and check_password_hash(row[0], password):
+        session['username'] = username
+        session['is_admin'] = row[1]
+        return jsonify({"success": True, "username": username, "is_admin": row[1]})
+    return jsonify({"success": False, "message": "帳號或密碼錯誤"}), 401
 
-    raise HTTPException(status_code=401, detail="帳號或密碼錯誤")
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({"success": True})
 
-@app.post("/api/logout")
-async def logout():
-    response = JSONResponse({"success": True})
-    response.delete_cookie("username")
-    response.delete_cookie("is_admin")
-    return response
+@app.route('/api/me', methods=['GET'])
+def me():
+    username = get_current_user()
+    if not username:
+        return jsonify({"error": "Unauthorized"}), 401
+    return jsonify({"username": username, "is_admin": is_admin()})
 
-@app.get("/api/me")
-async def me(request: Request):
-    username = get_current_user_from_cookie(request)
-    is_admin = request.cookies.get("is_admin") == "1"
-    return {"username": username, "is_admin": is_admin}
-
-@app.get("/api/admin/users")
-async def list_users(request: Request):
-    if request.cookies.get("is_admin") != "1":
-        raise HTTPException(status_code=403, detail="Forbidden")
+@app.route('/api/admin/users', methods=['GET'])
+def list_users():
+    if not is_admin():
+        return jsonify({"error": "Forbidden"}), 403
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT username FROM users")
     users = [row[0] for row in c.fetchall()]
     conn.close()
-    return users
+    return jsonify(users)
 
-@app.post("/api/admin/users/delete")
-async def delete_user(request: Request):
-    if request.cookies.get("is_admin") != "1":
-        raise HTTPException(status_code=403, detail="Forbidden")
-    data = await request.json()
+@app.route('/api/admin/users/delete', methods=['POST'])
+def delete_user():
+    if not is_admin():
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.json or {}
     target_user = data.get('target_user')
-    if target_user == request.cookies.get("username"):
-        raise HTTPException(status_code=400, detail="Cannot delete current logged in admin")
+    if target_user == get_current_user():
+        return jsonify({"error": "Cannot delete current logged in admin"}), 400
 
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -156,18 +148,18 @@ async def delete_user(request: Request):
     c.execute("DELETE FROM work_logs WHERE username=?", (target_user,))
     conn.commit()
     conn.close()
-    return {"success": True}
+    return jsonify({"success": True})
 
-@app.post("/api/register")
-async def register(request: Request):
-    data = await request.json()
+@app.route('/api/register', methods=['POST'])
+def register():
+    data = request.json or {}
     username = data.get('username', '').strip()
     password = data.get('password', '').strip()
 
     if not username or not password:
-        raise HTTPException(status_code=400, detail="請輸入帳號和密碼")
+        return jsonify({"error": "請輸入帳號和密碼"}), 400
 
-    hashed_pwd = pbkdf2_sha256.hash(password)
+    hashed_pwd = generate_password_hash(password)
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     try:
@@ -176,92 +168,100 @@ async def register(request: Request):
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
-        raise HTTPException(status_code=400, detail="帳號名稱已存在")
+        return jsonify({"error": "帳號名稱已存在"}), 400
     conn.close()
-    return {"success": True}
+    return jsonify({"success": True})
 
-@app.get("/api/settings")
-async def get_settings(request: Request, target_user: str = None):
-    current_user = get_current_user_from_cookie(request)
-    target = target_user or current_user
-    check_permission(request, target)
+@app.route('/api/settings', methods=['GET', 'POST'])
+def settings():
+    if not get_current_user():
+        return jsonify({"error": "Unauthorized"}), 401
 
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT pay_mode, default_rate, currency, companies FROM user_settings WHERE username=?", (target,))
-    row = c.fetchone()
-    conn.close()
+    if request.method == 'GET':
+        target_user = request.args.get('target_user', get_current_user())
+        if not check_permission(target_user):
+            return jsonify({"error": "Forbidden"}), 403
 
-    if row:
-        try:
-            companies = json.loads(row[3]) if row[3] else ["預設公司"]
-        except:
-            companies = ["預設公司"]
-        return {
-            "pay_mode": row[0],
-            "default_rate": row[1],
-            "currency": row[2],
-            "companies": companies
-        }
-    return {
-        "pay_mode": "day",
-        "default_rate": 700,
-        "currency": "$",
-        "companies": ["預設公司"]
-    }
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT pay_mode, default_rate, currency, companies FROM user_settings WHERE username=?", (target_user,))
+        row = c.fetchone()
+        conn.close()
 
-@app.post("/api/settings")
-async def save_settings(request: Request):
-    data = await request.json()
-    target_user = data.get('target_user') or get_current_user_from_cookie(request)
-    check_permission(request, target_user)
+        if row:
+            try:
+                companies = json.loads(row[3]) if row[3] else ["預設公司"]
+            except:
+                companies = ["預設公司"]
+            return jsonify({
+                "pay_mode": row[0],
+                "default_rate": row[1],
+                "currency": row[2],
+                "companies": companies
+            })
+        else:
+            return jsonify({
+                "pay_mode": "day",
+                "default_rate": 700,
+                "currency": "$",
+                "companies": ["預設公司"]
+            })
 
-    pay_mode = data.get('pay_mode', 'day')
-    default_rate = float(data.get('default_rate', 700))
-    currency = data.get('currency', '$')
-    companies = data.get('companies', ['預設公司'])
+    if request.method == 'POST':
+        data = request.json or {}
+        target_user = data.get('target_user', get_current_user())
+        if not check_permission(target_user):
+            return jsonify({"error": "Forbidden"}), 403
 
-    companies = [c.strip() for c in companies if c and c.strip()]
-    if not companies:
-        companies = ['預設公司']
+        pay_mode = data.get('pay_mode', 'day')
+        default_rate = float(data.get('default_rate', 700))
+        currency = data.get('currency', '$')
+        companies = data.get('companies', ['預設公司'])
 
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
+        companies = [c.strip() for c in companies if c and c.strip()]
+        if not companies:
+            companies = ['預設公司']
 
-    c.execute("SELECT companies FROM user_settings WHERE username=?", (target_user,))
-    old_row = c.fetchone()
-    old_companies = []
-    if old_row and old_row[0]:
-        try:
-            old_companies = json.loads(old_row[0])
-        except:
-            pass
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
 
-    # 自動更換預設公司與移轉舊紀錄邏輯
-    if "預設公司" in old_companies and "預設公司" not in companies:
-        first_new_company = companies[0]
-        c.execute("UPDATE work_logs SET company=? WHERE username=? AND (company='預設公司' OR company IS NULL OR company='')", (first_new_company, target_user))
+        c.execute("SELECT companies FROM user_settings WHERE username=?", (target_user,))
+        old_row = c.fetchone()
+        old_companies = []
+        if old_row and old_row[0]:
+            try:
+                old_companies = json.loads(old_row[0])
+            except:
+                pass
 
-    companies_json = json.dumps(companies, ensure_ascii=False)
-    c.execute('''
-        INSERT INTO user_settings (username, pay_mode, default_rate, currency, companies)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(username) DO UPDATE SET
-            pay_mode=excluded.pay_mode,
-            default_rate=excluded.default_rate,
-            currency=excluded.currency,
-            companies=excluded.companies
-    ''', (target_user, pay_mode, default_rate, currency, companies_json))
+        # 自動更換預設公司與批次移轉舊紀錄
+        if "預設公司" in old_companies and "預設公司" not in companies:
+            first_new_company = companies[0]
+            c.execute("UPDATE work_logs SET company=? WHERE username=? AND (company='預設公司' OR company IS NULL OR company='')", (first_new_company, target_user))
 
-    conn.commit()
-    conn.close()
-    return {"success": True}
+        companies_json = json.dumps(companies, ensure_ascii=False)
+        c.execute('''
+            INSERT INTO user_settings (username, pay_mode, default_rate, currency, companies)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(username) DO UPDATE SET
+                pay_mode=excluded.pay_mode,
+                default_rate=excluded.default_rate,
+                currency=excluded.currency,
+                companies=excluded.companies
+        ''', (target_user, pay_mode, default_rate, currency, companies_json))
 
-@app.get("/api/work/{year}/{month}")
-async def get_work_logs(year: int, month: int, request: Request, target_user: str = None):
-    current_user = get_current_user_from_cookie(request)
-    target = target_user or current_user
-    check_permission(request, target)
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+
+@app.route('/api/work/<int:year>/<int:month>', methods=['GET'])
+def get_work_logs(year, month):
+    if not get_current_user():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    target_user = request.args.get('target_user', get_current_user())
+    if not check_permission(target_user):
+        return jsonify({"error": "Forbidden"}), 403
 
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -272,7 +272,7 @@ async def get_work_logs(year: int, month: int, request: Request, target_user: st
         FROM work_logs 
         WHERE username=? AND date LIKE ?
         ORDER BY date ASC, id ASC
-    ''', (target, prefix))
+    ''', (target_user, prefix))
     
     rows = c.fetchall()
     conn.close()
@@ -310,20 +310,24 @@ async def get_work_logs(year: int, month: int, request: Request, target_user: st
         by_company[company_name]["hours"] += hours
         by_company[company_name]["salary"] += daily_pay
 
-    return {
+    return jsonify({
         "logs": logs,
         "summary": {
             "total_hours": round(total_hours, 2),
             "total_salary": round(total_salary, 2),
             "by_company": by_company
         }
-    }
+    })
 
-@app.post("/api/work/save")
-async def save_work_log(request: Request):
-    data = await request.json()
-    target_user = data.get('target_user') or get_current_user_from_cookie(request)
-    check_permission(request, target_user)
+@app.route('/api/work/save', methods=['POST'])
+def save_work_log():
+    if not get_current_user():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.json or {}
+    target_user = data.get('target_user', get_current_user())
+    if not check_permission(target_user):
+        return jsonify({"error": "Forbidden"}), 403
 
     log_id = data.get('id')
     date = data.get('date')
@@ -369,13 +373,17 @@ async def save_work_log(request: Request):
 
     conn.commit()
     conn.close()
-    return {"success": True}
+    return jsonify({"success": True})
 
-@app.post("/api/work/delete_item")
-async def delete_work_item(request: Request):
-    data = await request.json()
-    target_user = data.get('target_user') or get_current_user_from_cookie(request)
-    check_permission(request, target_user)
+@app.route('/api/work/delete_item', methods=['POST'])
+def delete_work_item():
+    if not get_current_user():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.json or {}
+    target_user = data.get('target_user', get_current_user())
+    if not check_permission(target_user):
+        return jsonify({"error": "Forbidden"}), 403
 
     log_id = data.get('log_id')
 
@@ -384,4 +392,7 @@ async def delete_work_item(request: Request):
     c.execute("DELETE FROM work_logs WHERE id=? AND username=?", (log_id, target_user))
     conn.commit()
     conn.close()
-    return {"success": True}
+    return jsonify({"success": True})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
