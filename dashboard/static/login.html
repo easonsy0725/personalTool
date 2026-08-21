@@ -11,6 +11,7 @@
 
   <div id="app" class="w-full max-w-sm bg-white p-6 rounded shadow-md border border-gray-200">
     
+    <!-- 頁籤分頁 -->
     <div class="flex border-b mb-6 text-sm font-bold">
       <button 
         @click="isRegister = false" 
@@ -30,10 +31,11 @@
       {{ isRegister ? 'Create Account' : 'Welcome Back' }}
     </h1>
 
+    <!-- 登入與註冊表單 -->
     <form @submit.prevent="handleSubmit" class="space-y-4">
       
       <div>
-        <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Username (登入帳號)</label>
+        <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Username</label>
         <input 
           v-model="username" 
           type="text" 
@@ -42,7 +44,7 @@
       </div>
 
       <div>
-        <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Password (登入密碼)</label>
+        <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Password</label>
         <input 
           v-model="password" 
           type="password" 
@@ -50,18 +52,10 @@
           class="w-full bg-gray-50 border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-black rounded-none">
       </div>
 
+      <!-- 僅在「註冊」時顯示的角色與公司選單 -->
       <template v-if="isRegister">
         <div>
-          <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Display Name (顯示名稱)</label>
-          <input 
-            v-model="displayName" 
-            type="text" 
-            placeholder="例如: 小明 / Kelvin"
-            class="w-full bg-gray-50 border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-black rounded-none">
-        </div>
-
-        <div>
-          <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Role (帳號權限)</label>
+          <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Role (帳號身份)</label>
           <select 
             v-model="role" 
             class="w-full bg-gray-50 border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-black rounded-none">
@@ -80,6 +74,7 @@
         </div>
       </template>
 
+      <!-- 錯誤提示 -->
       <div v-if="errorMessage" class="text-xs text-red-500 font-bold text-center">
         {{ errorMessage }}
       </div>
@@ -107,7 +102,6 @@
         const isRegister = ref(false);
         const username = ref('');
         const password = ref('');
-        const displayName = ref('');
         const role = ref('employee');
         const company = ref('預設公司');
         const errorMessage = ref('');
@@ -117,7 +111,7 @@
           const endpoint = isRegister.value ? '/api/register' : '/api/login';
           
           const payload = isRegister.value 
-            ? { username: username.value, password: password.value, display_name: displayName.value, role: role.value, company: company.value }
+            ? { username: username.value, password: password.value, role: role.value, company: company.value }
             : { username: username.value, password: password.value };
 
           try {
@@ -138,6 +132,7 @@
               alert('註冊成功！請直接登入');
               isRegister.value = false;
             } else {
+              // 登入成功後根據角色跳轉
               if (data.role === 'accounting') {
                 window.location.href = '/accounting.html';
               } else {
@@ -150,7 +145,7 @@
         };
 
         return {
-          isRegister, username, password, displayName, role, company, errorMessage, handleSubmit
+          isRegister, username, password, role, company, errorMessage, handleSubmit
         };
       }
     }).mount('#app');

@@ -3,29 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>工時與薪資記錄系統 - 會計增強版</title>
+  <title>工時與薪資記錄系統</title>
   <link rel="manifest" href="/manifest.json">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 </head>
 <body class="bg-[#FAF9F6] text-[#191919] min-h-screen p-2 sm:p-8 font-sans antialiased">
-  <div id="app" class="max-w-5xl mx-auto space-y-4">
+  <div id="app" class="max-w-4xl mx-auto space-y-4">
     
     <!-- 頁頭資訊 -->
     <header class="flex justify-between items-baseline border-b border-[#E5E5E5] pb-3">
       <div>
-        <h1 class="text-lg sm:text-3xl font-semibold tracking-tight text-[#111111]">
-          工時與薪资記錄系統
-          <span v-if="userSettings.is_accounting_mode" class="ml-2 text-xs bg-blue-900 text-white px-2 py-0.5 rounded font-mono">會計模式 ON</span>
-        </h1>
+        <h1 class="text-lg sm:text-3xl font-semibold tracking-tight text-[#111111]">工時與薪資記錄系統</h1>
         <p class="text-[10px] sm:text-xs text-[#737373] font-mono uppercase">
-          目前帳號: <span class="text-black font-bold">{{ userSettings.display_name || currentUser }}</span> 
-          <span class="text-gray-400">({{ currentUser }})</span>
+          目前帳號: <span class="text-black font-bold">{{ currentUser }}</span>
           <span v-if="isAdmin" class="ml-2 bg-black text-white px-1 text-[9px]">管理者</span>
         </p>
       </div>
       <div class="flex items-center space-x-3 font-mono text-xs">
-        <button @click="showSettings = true" class="text-[#737373] hover:text-black">[偏好與設定]</button>
+        <button @click="showSettings = true" class="text-[#737373] hover:text-black">[偏好與公司設定]</button>
         <button @click="logout" class="text-red-500 hover:underline">[登出]</button>
       </div>
     </header>
@@ -35,7 +31,7 @@
       <div class="flex items-center space-x-2">
         <span class="font-bold text-[#333]">管理目標帳號:</span>
         <select v-model="targetUser" @change="onTargetUserChange" class="bg-white border p-1 text-xs">
-          <option :value="currentUser">自己 ({{ userSettings.display_name || currentUser }})</option>
+          <option :value="currentUser">自己 ({{ currentUser }})</option>
           <option v-for="u in filteredUserList" :key="u" :value="u">{{ u }}</option>
         </select>
       </div>
@@ -60,34 +56,9 @@
           </div>
         </div>
 
-        <div class="text-xs sm:text-sm font-mono text-right flex items-center space-x-4">
-          <button v-if="userSettings.is_accounting_mode" @click="exportAccountingCSV" class="bg-emerald-700 text-white px-2 py-1 text-xs hover:bg-emerald-800 font-sans">
-            📊 匯出會計帳表 (CSV)
-          </button>
-          <div>
-            <div><span class="text-[#737373]">總工時: </span><span class="font-bold">{{ formatDuration(summary.total_hours) }}</span></div>
-            <div><span class="text-[#737373]">總應收金額: </span><span class="font-bold text-blue-700">{{ userSettings.currency }}{{ summary.total_salary.toLocaleString() }}</span></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 會計模式專用：財務概況面板 -->
-      <div v-if="userSettings.is_accounting_mode" class="bg-slate-900 text-white p-3 font-mono text-xs rounded border border-slate-700 grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div>
-          <div class="text-slate-400 text-[10px]">當月總營收 (應收)</div>
-          <div class="text-base font-bold text-emerald-400">{{ userSettings.currency }}{{ summary.total_salary.toLocaleString() }}</div>
-        </div>
-        <div>
-          <div class="text-slate-400 text-[10px]">已結清帳款 (Paid)</div>
-          <div class="text-base font-bold text-blue-400">{{ userSettings.currency }}{{ accountingSummary.paidAmount.toLocaleString() }}</div>
-        </div>
-        <div>
-          <div class="text-slate-400 text-[10px]">未結款項 (Unpaid)</div>
-          <div class="text-base font-bold text-amber-400">{{ userSettings.currency }}{{ accountingSummary.unpaidAmount.toLocaleString() }}</div>
-        </div>
-        <div>
-          <div class="text-slate-400 text-[10px]">發票開立筆數</div>
-          <div class="text-base font-bold text-purple-300">{{ accountingSummary.invoicedCount }} 筆</div>
+        <div class="text-xs sm:text-sm font-mono text-right">
+          <div><span class="text-[#737373]">總工時: </span><span class="font-bold">{{ formatDuration(summary.total_hours) }}</span></div>
+          <div><span class="text-[#737373]">總薪資: </span><span class="font-bold">{{ userSettings.currency }}{{ summary.total_salary.toLocaleString() }}</span></div>
         </div>
       </div>
 
@@ -129,7 +100,6 @@
             <div v-for="item in getLogs(day)" :key="item.id" class="border-t border-gray-700 pt-0.5 text-[8px] truncate">
               <span class="text-gray-400">[{{ item.company }}]</span>
               <span class="ml-0.5 text-white">+{{ userSettings.currency }}{{ item.daily_pay }}</span>
-              <span v-if="userSettings.is_accounting_mode && item.is_paid" class="ml-1 text-emerald-400">[已結]</span>
             </div>
           </div>
         </div>
@@ -141,7 +111,7 @@
       <div class="bg-[#FAF9F6] border border-[#111111] p-4 max-w-md w-full space-y-4 max-h-[90vh] overflow-y-auto">
         <div class="flex justify-between items-center border-b pb-2">
           <h3 class="text-xs font-mono font-bold text-[#111111]">
-            日期紀錄 ({{ userSettings.display_name || targetUser || currentUser }}) - {{ formatDate(selectedDay) }}
+            日期紀錄 ({{ targetUser || currentUser }}) - {{ formatDate(selectedDay) }}
           </h3>
           <button @click="selectedDay = null" class="font-bold">✕</button>
         </div>
@@ -158,10 +128,6 @@
                 薪資: <span class="text-black font-bold">{{ userSettings.currency }}{{ item.daily_pay }}</span>
                 <span v-if="item.location" class="ml-2">📍 {{ item.location }}</span>
               </div>
-              <!-- 會計模式額外顯示 -->
-              <div v-if="userSettings.is_accounting_mode" class="text-[9px] text-blue-800 font-bold mt-0.5">
-                狀態: {{ item.is_paid ? '✅ 已結算' : '⏳ 未結算' }} | 發票: {{ item.invoice_no || '無' }}
-              </div>
             </div>
             <div class="flex space-x-2">
               <button @click="editLogItem(item)" class="text-blue-600 underline text-[10px]">編輯</button>
@@ -176,7 +142,7 @@
             <button v-if="editingLogId" @click="resetForm" class="text-[10px] text-gray-500 underline">取消編輯</button>
           </div>
 
-          <div>
+          <div v-if="editingLogId || (userSettings.companies && userSettings.companies.length > 1)">
             <label class="block text-[10px] text-[#737373] mb-1">選擇任職公司</label>
             <select v-model="formCompany" class="w-full bg-white border p-1.5 text-xs font-bold">
               <option v-for="comp in availableCompanies" :key="comp" :value="comp">{{ comp }}</option>
@@ -224,21 +190,6 @@
             </div>
           </div>
 
-          <!-- 會計模式專用新增欄位 -->
-          <div v-if="userSettings.is_accounting_mode" class="p-2 bg-slate-100 border border-slate-300 rounded space-y-2">
-            <div class="text-[10px] font-bold text-slate-700">會計備註與帳務紀錄</div>
-            <div class="flex items-center space-x-4">
-              <label class="flex items-center space-x-1 cursor-pointer">
-                <input type="checkbox" v-model="formIsPaid" class="rounded">
-                <span class="text-[10px]">已收款/已結清</span>
-              </label>
-            </div>
-            <div>
-              <label class="block text-[9px] text-[#737373]">發票 / 單號紀錄</label>
-              <input v-model="formInvoiceNo" placeholder="例：INV-20260801" class="w-full bg-white border p-1 text-xs">
-            </div>
-          </div>
-
           <div>
             <label class="block text-[10px] text-[#737373]">工作地點 / 備註</label>
             <input v-model="formLocation" placeholder="例如：公司" class="w-full bg-white border p-1.5 text-xs">
@@ -257,28 +208,13 @@
 
     <!-- 偏好設定彈窗 Modal -->
     <div v-if="showSettings" class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-      <div class="bg-[#FAF9F6] border border-[#111111] p-4 max-w-sm w-full space-y-3 font-mono text-xs max-h-[90vh] overflow-y-auto">
+      <div class="bg-[#FAF9F6] border border-[#111111] p-4 max-w-sm w-full space-y-3 font-mono text-xs">
         <div class="flex justify-between items-center border-b pb-2">
-          <h3 class="font-bold text-[#111111]">偏好設定與個人化</h3>
+          <h3 class="font-bold text-[#111111]">帳號偏好與公司設定</h3>
           <button @click="showSettings = false">✕</button>
         </div>
         
         <div class="space-y-3">
-          <!-- 變更顯示名稱 -->
-          <div>
-            <label class="block text-[#737373] mb-1 font-bold">個人顯示名稱 (Display Name)</label>
-            <input v-model="userSettings.display_name" placeholder="請輸入欲顯示的暱稱/姓名" type="text" class="w-full bg-white border p-1.5 text-xs">
-          </div>
-
-          <!-- 切換會計模式 -->
-          <div class="p-2 bg-blue-50 border border-blue-200 rounded">
-            <label class="flex items-center justify-between cursor-pointer">
-              <span class="font-bold text-blue-900">啟用會計/記帳模式</span>
-              <input type="checkbox" v-model="userSettings.is_accounting_mode" class="w-4 h-4">
-            </label>
-            <p class="text-[9px] text-blue-700 mt-1">開啟後將提供應收帳款管理、結算狀態標記與 CSV 會計帳冊匯出功能。</p>
-          </div>
-
           <div>
             <label class="block text-[#737373] mb-1">任職公司名稱清單 (可多家)</label>
             <div v-for="(comp, index) in settingsCompanies" :key="index" class="flex items-center space-x-1 mb-1">
@@ -333,8 +269,6 @@
         const logs = ref({});
         
         const userSettings = ref({
-          display_name: '',
-          is_accounting_mode: false,
           pay_mode: 'day',
           default_rate: 700,
           currency: '$',
@@ -352,8 +286,6 @@
         const formRate = ref(700);
         const formHours = ref(8);
         const formLocation = ref('');
-        const formIsPaid = ref(false);
-        const formInvoiceNo = ref('');
 
         const statusOptions = {
           'half': { label: '半天 (0.5x)' },
@@ -363,20 +295,7 @@
           'ot_3.0': { label: '加班 3.0x' }
         };
 
-        const accountingSummary = computed(() => {
-          let paidAmount = 0;
-          let unpaidAmount = 0;
-          let invoicedCount = 0;
-
-          Object.values(logs.value).flat().forEach(item => {
-            if (item.is_paid) paidAmount += (item.daily_pay || 0);
-            else unpaidAmount += (item.daily_pay || 0);
-            if (item.invoice_no) invoicedCount++;
-          });
-
-          return { paidAmount, unpaidAmount, invoicedCount };
-        });
-
+        // 過濾選單：防止重複顯示目前登入者（不分大小寫）
         const filteredUserList = computed(() => {
           return userList.value.filter(u => u.toLowerCase() !== currentUser.value.toLowerCase());
         });
@@ -389,25 +308,48 @@
           return Array.from(new Set(comps));
         });
 
+        // 核心天數/小時格式化邏輯
         const formatDuration = (totalDecimalHours) => {
           if (!totalDecimalHours || totalDecimalHours <= 0) {
             return userSettings.value.pay_mode === 'day' ? '0 天' : '0 小時 0 分鐘';
           }
+
           const totalMinutes = Math.round(totalDecimalHours * 60);
+
           if (userSettings.value.pay_mode === 'day') {
             const days = totalDecimalHours / 8;
-            if (days % 0.5 === 0) return `${days} 天`;
+            
+            // 完美整天或半天（例如: 1 天, 1.5 天, 11 天）直接顯示
+            if (days % 0.5 === 0) {
+              return `${days} 天`;
+            }
+
+            // 非整數或半天的天數（例如: 7.8 天），轉為「X 天 Y 小時 Z 分鐘」
             const wholeDays = Math.floor(totalDecimalHours / 8);
             const remainingMinutes = totalMinutes - (wholeDays * 8 * 60);
             const hours = Math.floor(remainingMinutes / 60);
             const mins = remainingMinutes % 60;
+
             let result = wholeDays > 0 ? `${wholeDays} 天 ` : '';
             if (hours > 0) result += `${hours} 小時 `;
             if (mins > 0) result += `${mins} 分鐘`;
+
             return result.trim();
           }
+
+          // 按時計算模式
           const hours = Math.floor(totalMinutes / 60);
           const mins = totalMinutes % 60;
+
+          if (hours >= 8) {
+            const d = Math.floor(hours / 8);
+            const h = hours % 8;
+            let res = `${d} 天 `;
+            if (h > 0) res += `${h} 小時 `;
+            if (mins > 0) res += `${mins} 分鐘`;
+            return res.trim();
+          }
+
           let res = '';
           if (hours > 0) res += `${hours} 小時 `;
           if (mins > 0) res += `${mins} 分鐘`;
@@ -449,8 +391,6 @@
           formRate.value = userSettings.value.default_rate || 700;
           formHours.value = 8;
           formLocation.value = '';
-          formIsPaid.value = false;
-          formInvoiceNo.value = '';
         };
 
         const editLogItem = (item) => {
@@ -461,8 +401,6 @@
           formRate.value = item.rate;
           formHours.value = item.hours;
           formLocation.value = item.location;
-          formIsPaid.value = !!item.is_paid;
-          formInvoiceNo.value = item.invoice_no || '';
         };
 
         const saveWorkItem = async () => {
@@ -478,8 +416,6 @@
               rate: parseFloat(formRate.value) || 0,
               hours: parseFloat(formHours.value) || 0,
               location: formLocation.value,
-              is_paid: formIsPaid.value,
-              invoice_no: formInvoiceNo.value,
               target_user: targetUser.value || currentUser.value
             })
           });
@@ -504,43 +440,14 @@
           }
         };
 
-        const exportAccountingCSV = () => {
-          const allItems = Object.values(logs.value).flat();
-          if (allItems.length === 0) {
-            alert('當月無可匯出的帳務資料');
-            return;
-          }
-
-          let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
-          csvContent += "日期,公司,計薪模式,時數/狀態,單價,應收金額,結算狀態,發票號碼,地點與備註\n";
-
-          allItems.forEach(item => {
-            const row = [
-              item.date,
-              `"${item.company}"`,
-              item.pay_mode,
-              item.pay_mode === 'hour' ? `${item.hours}小時` : item.status,
-              item.rate,
-              item.daily_pay,
-              item.is_paid ? '已結清' : '未結算',
-              `"${item.invoice_no || ''}"`,
-              `"${item.location || ''}"`
-            ];
-            csvContent += row.join(",") + "\n";
-          });
-
-          const encodedUri = encodeURI(csvContent);
-          const link = document.createElement("a");
-          link.setAttribute("href", encodedUri);
-          link.setAttribute("download", `Accounting_${currentYear.value}_${currentMonth.value}.csv`);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+        const addCompanyInput = () => {
+          settingsCompanies.value.push('');
         };
 
-        const addCompanyInput = () => { settingsCompanies.value.push(''); };
         const removeCompanyInput = (index) => {
-          if (settingsCompanies.value.length > 1) settingsCompanies.value.splice(index, 1);
+          if (settingsCompanies.value.length > 1) {
+            settingsCompanies.value.splice(index, 1);
+          }
         };
 
         const fetchUsersList = async () => {
@@ -588,14 +495,7 @@
           const res = await fetch(`/api/settings?target_user=${uParam}&t=${Date.now()}`);
           if (checkAuth(res)) {
             const data = await res.json();
-            userSettings.value = {
-              display_name: data.display_name || '',
-              is_accounting_mode: !!data.is_accounting_mode,
-              pay_mode: data.pay_mode || 'day',
-              default_rate: data.default_rate || 700,
-              currency: data.currency || '$',
-              companies: data.companies || ['預設公司']
-            };
+            userSettings.value = data;
             settingsCompanies.value = [...(data.companies || ['預設公司'])];
           }
         };
@@ -606,8 +506,6 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-              display_name: userSettings.value.display_name,
-              is_accounting_mode: userSettings.value.is_accounting_mode,
               pay_mode: userSettings.value.pay_mode,
               default_rate: parseFloat(userSettings.value.default_rate) || 0, 
               currency: userSettings.value.currency,
@@ -628,8 +526,8 @@
           const res = await fetch(url);
           if (checkAuth(res)) {
             const data = await res.json();
-            logs.value = data.logs || {};
-            summary.value = data.summary || { total_hours: 0, total_salary: 0, by_company: {} };
+            logs.value = data.logs;
+            summary.value = data.summary;
           }
         };
 
@@ -654,11 +552,11 @@
         return {
           currentUser, isAdmin, userList, filteredUserList, targetUser, onTargetUserChange,
           currentYear, currentMonth, daysInMonth, firstDayOfWeek,
-          summary, accountingSummary, userSettings, settingsCompanies, showSettings, saveSettings, changeMonth,
+          summary, userSettings, settingsCompanies, showSettings, saveSettings, changeMonth,
           addCompanyInput, removeCompanyInput, formatDuration, availableCompanies,
           selectedDay, openDayModal, dayLogs, editingLogId, resetForm, editLogItem, deleteLogItem,
-          formCompany, formPayMode, formStatus, formRate, formHours, formLocation, formIsPaid, formInvoiceNo, saveWorkItem,
-          statusOptions, formatDate, getLogs, getStatusLabel, logout, loadMonthData, deleteUser, exportAccountingCSV
+          formCompany, formPayMode, formStatus, formRate, formHours, formLocation, saveWorkItem,
+          statusOptions, formatDate, getLogs, getStatusLabel, logout, loadMonthData, deleteUser
         };
       }
     }).mount('#app');
