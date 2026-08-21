@@ -1,12 +1,14 @@
+import os
 import sqlite3
-from flask import Flask, request, jsonify, redirect, session
-from werkzeug.security import generate_password_hash, check_password_hash
 
-app = Flask(__name__, static_folder='static', template_folder='static')
-app.secret_key = 'your_secret_key_here'
-DB_NAME = 'database.db'
+# 修正資料庫路徑為 data/dashboard.db
+DB_DIR = 'data'
+DB_NAME = os.path.join(DB_DIR, 'dashboard.db')
 
 def get_db():
+    # 確保 data 資料夾存在
+    if not os.path.exists(DB_DIR):
+        os.makedirs(DB_DIR)
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     return conn
