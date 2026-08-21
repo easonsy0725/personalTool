@@ -58,7 +58,7 @@
 
         <div class="text-xs sm:text-sm font-mono text-right">
           <div><span class="text-[#737373]">總工時: </span><span class="font-bold">{{ formatDuration(summary.total_hours) }}</span></div>
-          <div><span class="text-[#737373]">總薪資: </span><span class="font-bold">{{ userSettings.currency }}{{ summary.total_salary.toLocaleString() }}</span></div>
+          <div><span class="text-[#737373]">總薪資: </span><span class="font-bold">{{ userSettings.currency }}{{ summary.total_salary ? summary.total_salary.toLocaleString() : 0 }}</span></div>
         </div>
       </div>
 
@@ -68,7 +68,7 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div v-for="(stat, compName) in summary.by_company" :key="compName" class="flex justify-between bg-[#FAF9F6] p-1.5 border">
             <span class="font-bold text-[#111111]">🏢 {{ compName }}</span>
-            <span>{{ formatDuration(stat.hours) }} | <span class="font-bold">{{ userSettings.currency }}{{ stat.salary.toLocaleString() }}</span></span>
+            <span>{{ formatDuration(stat.hours) }} | <span class="font-bold">{{ userSettings.currency }}{{ stat.salary ? stat.salary.toLocaleString() : 0 }}</span></span>
           </div>
         </div>
       </div>
@@ -111,7 +111,7 @@
       <div class="bg-[#FAF9F6] border border-[#111111] p-4 max-w-md w-full space-y-4 max-h-[90vh] overflow-y-auto">
         <div class="flex justify-between items-center border-b pb-2">
           <h3 class="text-xs font-mono font-bold text-[#111111]">
-            日期紀錄 ({{ targetUser || currentUser }}) - {{ formatDate(selectedDay) }}
+            日期紀錄 ({{ getEffectiveTargetUser() }}) - {{ formatDate(selectedDay) }}
           </h3>
           <button @click="selectedDay = null" class="font-bold">✕</button>
         </div>
@@ -228,7 +228,7 @@
             <label class="block text-[#737373] mb-1">預設計薪模式</label>
             <div class="grid grid-cols-2 gap-2">
               <button @click="userSettings.pay_mode = 'day'" :class="['p-1 border', userSettings.pay_mode === 'day' ? 'bg-black text-white' : 'bg-white']">按日計算</button>
-              <button @click="userSettings.pay_mode = 'hour'" :class="['p-1 border', userSettings.pay_mode === 'hour' ? 'bg-black text-white' : 'bg-white']">按時計算</button>
+              <button @click="userSettings.pay_mode = 'hour'" :class="['p-1 border', userSettings.pay_mode === 'hour' ? 'bg-[#111111] text-white' : 'bg-white']">按時計算</button>
             </div>
           </div>
 
@@ -293,6 +293,10 @@
           'ot_1.5': { label: '加班 1.5x' },
           'ot_2.0': { label: '加班 2.0x' },
           'ot_3.0': { label: '加班 3.0x' }
+        };
+
+        const getEffectiveTargetUser = () => {
+          return targetUser.value || currentUser.value;
         };
 
         const filteredUserList = computed(() => {
@@ -411,7 +415,7 @@
               rate: parseFloat(formRate.value) || 0,
               hours: parseFloat(formHours.value) || 0,
               location: formLocation.value,
-              target_user: targetUser.value || currentUser.value
+              target_user: getEffectiveTargetUser()
             })
           });
           if (checkAuth(res)) {
@@ -427,7 +431,7 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               log_id: logId,
-              target_user: targetUser.value || currentUser.value
+              target_user: getEffectiveTargetUser()
             })
           });
           if (checkAuth(res)) {
@@ -486,8 +490,8 @@
         };
 
         const loadUserSettings = async () => {
-          const uParam = targetUser.value || currentUser.value;
-          const res = await fetch(`/api/settings?target_user=${uParam}&t=${Date.now()}`);
+          const uParam = getEffectiveTargetUser();
+          const res = await fetch(`/api/settings?target_user=${encodeURIComponent(uParam)}&t=${Date.now()}`);
           if (checkAuth(res)) {
             const data = await res.json();
             userSettings.value = data;
@@ -505,7 +509,7 @@
               default_rate: parseFloat(userSettings.value.default_rate) || 0, 
               currency: userSettings.value.currency,
               companies: validCompanies.length > 0 ? validCompanies : ['預設公司'],
-              target_user: targetUser.value || currentUser.value
+              target_user: getEffectiveTargetUser()
             })
           });
           if (checkAuth(res)) {
@@ -516,13 +520,14 @@
         };
 
         const loadMonthData = async () => {
-          const uParam = targetUser.value || currentUser.value;
-          const url = `/api/work/${currentYear.value}/${currentMonth.value}?target_user=${uParam}&t=${Date.now()}`;
+          const uParam = getEffectiveTargetUser();
+          if (!uParam) return;
+          const url = `/api/work/${currentYear.value}/${currentMonth.value}?target_user=${encodeURIComponent(uParam)}&t=${Date.now()}`;
           const res = await fetch(url);
           if (checkAuth(res)) {
             const data = await res.json();
-            logs.value = data.logs;
-            summary.value = data.summary;
+            logs.value = data.logs || {};
+            summary.value = data.summary || { total_hours: 0, total_salary: 0, by_company: {} };
           }
         };
 
@@ -551,7 +556,8 @@
           addCompanyInput, removeCompanyInput, formatDuration, availableCompanies,
           selectedDay, openDayModal, dayLogs, editingLogId, resetForm, editLogItem, deleteLogItem,
           formCompany, formPayMode, formStatus, formRate, formHours, formLocation, saveWorkItem,
-          statusOptions, formatDate, getLogs, getStatusLabel, logout, loadMonthData, deleteUser
+          statusOptions, formatDate, getLogs, getStatusLabel, logout, loadMonthData, deleteUser,
+          getEffectiveTargetUser
         };
       }
     }).mount('#app');
