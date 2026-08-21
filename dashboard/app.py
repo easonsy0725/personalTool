@@ -4,8 +4,11 @@ from flask import Flask, request, jsonify, redirect, session
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__, static_folder='static', template_folder='static')
-app.secret_key = 'my_dashboard_secret_key_12345'
 
+# Fallback secret key ensures app never crashes if environment variable isn't set
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default_fallback_secret_key_12345')
+
+# Store SQLite database inside the data/ directory
 DB_DIR = 'data'
 DB_NAME = os.path.join(DB_DIR, 'dashboard.db')
 
@@ -20,11 +23,9 @@ def init_db():
     with get_db() as conn:
         conn.execute('''
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
+                username TEXT PRIMARY KEY,
                 password TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'employee',
-                company TEXT
+                role TEXT DEFAULT 'admin'
             )
         ''')
         conn.execute('''
@@ -61,15 +62,17 @@ def login():
     data = request.json or {}
     username = data.get('username')
     password = data.get('password')
+    
     with get_db() as conn:
         user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
         if user and check_password_hash(user['password'], password):
             session['username'] = user['username']
-            # 使用 keys() 檢查或 get() 避免 KeyError / IndexError
+            # Safe access to avoid KeyError / IndexError on missing columns
             session['role'] = user['role'] if 'role' in user.keys() else 'admin'
             return jsonify({'status': 'success'})
-        return jsonify({'error': '帳號或密碼錯誤'}), 400
-        
+            
+        return jsonify({'error': 'Invalid username or password'}), 400
+
 @app.route('/api/logout', methods=['POST'])
 def logout():
     session.clear()
@@ -92,6 +95,10 @@ def get_users():
 
 @app.route('/api/work/<int:year>/<int:month>')
 def get_work_logs(year, month):
+    if 'username' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    # Default target_user to the currently logged-in user session
     target_user = request.args.get('target_user', session.get('username'))
     month_str = f"{year}-{month:02d}"
     
@@ -107,7 +114,8 @@ def get_work_logs(year, month):
         for row in rows:
             item = dict(row)
             d = item['date']
-            if d not in logs: logs[d] = []
+            if d not in logs:
+                logs[d] = []
             logs[d].append(item)
 
             comp = item['company']
