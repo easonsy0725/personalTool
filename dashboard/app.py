@@ -241,4 +241,4 @@ def handle_settings():
             return jsonify({'pay_mode': 'day', 'default_rate': 700, 'currency': '$', 'companies': ['預設公司']})
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=True)
