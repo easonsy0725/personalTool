@@ -2,9 +2,8 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>工時與薪資記錄系統</title>
-  <link rel="manifest" href="/manifest.json">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 </head>
@@ -15,33 +14,33 @@
     <header class="flex justify-between items-baseline border-b border-[#E5E5E5] pb-3">
       <div>
         <h1 class="text-lg sm:text-3xl font-semibold tracking-tight text-[#111111]">工時與薪資記錄系統</h1>
-        <p class="text-[10px] sm:text-xs text-[#737373] font-mono uppercase">
+        <p class="text-[10px] sm:text-xs text-[#737373] font-mono uppercase mt-1">
           目前帳號: <span class="text-black font-bold">{{ currentUser }}</span>
-          <span v-if="isAdmin" class="ml-2 bg-black text-white px-1 text-[9px]">管理者</span>
+          <span v-if="userRole === 'accounting'" class="ml-2 bg-blue-600 text-white px-1.5 py-0.5 text-[9px]">
+            會計審核 ({{ userCompany }})
+          </span>
+          <span v-else-if="userRole === 'admin'" class="ml-2 bg-black text-white px-1.5 py-0.5 text-[9px]">
+            管理者
+          </span>
         </p>
       </div>
       <div class="flex items-center space-x-3 font-mono text-xs">
-        <button @click="showSettings = true" class="text-[#737373] hover:text-black">[偏好與公司設定]</button>
+        <button v-if="userRole !== 'accounting'" @click="showSettings = true" class="text-[#737373] hover:text-black">[偏好與公司設定]</button>
         <button @click="logout" class="text-red-500 hover:underline">[登出]</button>
       </div>
     </header>
 
-    <!-- 管理者切換目標帳號 -->
-    <div v-if="isAdmin" class="bg-[#EAEAEA] p-2 border border-[#CCCCCC] font-mono text-xs flex items-center justify-between">
+    <!-- 會計/管理者 切換檢視目標員工 -->
+    <div v-if="userRole === 'accounting' || userRole === 'admin'" class="bg-[#EAEAEA] p-2 border border-[#CCCCCC] font-mono text-xs flex items-center justify-between">
       <div class="flex items-center space-x-2">
-        <span class="font-bold text-[#333]">管理目標帳號:</span>
+        <span class="font-bold text-[#333]">審核目標員工:</span>
         <select v-model="targetUser" @change="onTargetUserChange" class="bg-white border p-1 text-xs">
-          <option :value="currentUser">自己 ({{ currentUser }})</option>
-          <option v-for="u in filteredUserList" :key="u" :value="u">{{ u }}</option>
+          <option v-for="u in userList" :key="u" :value="u">{{ u }}</option>
         </select>
       </div>
-      <button 
-        v-if="targetUser && targetUser.toLowerCase() !== currentUser.toLowerCase()" 
-        @click="deleteUser(targetUser)" 
-        class="bg-red-600 text-white px-2 py-1 text-[10px] font-bold hover:bg-red-700"
-      >
-        刪除帳號 {{ targetUser }}
-      </button>
+      <span v-if="userRole === 'accounting'" class="text-[10px] text-gray-500">
+        * 您目前僅能存取與審核「{{ userCompany }}」的數據
+      </span>
     </div>
 
     <!-- 月份統計摘要 -->
@@ -62,7 +61,7 @@
         </div>
       </div>
 
-      <!-- 各公司統計小計 -->
+      <!-- 各公司統計小計 (會計帳號僅顯示該會計公司) -->
       <div v-if="Object.keys(summary.by_company || {}).length > 0" class="bg-white border p-3 font-mono text-xs space-y-1">
         <div class="font-bold text-[#737373] text-[10px] border-b pb-1 mb-1">各公司工時與薪資小計:</div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -136,38 +135,30 @@
           </div>
         </div>
 
+        <!-- 編輯/新增區塊 -->
         <div class="border-t pt-3 space-y-3 font-mono text-xs">
           <div class="font-bold text-[#111111] flex justify-between">
             <span>{{ editingLogId ? '編輯工作條目' : '新增工作條目' }}</span>
             <button v-if="editingLogId" @click="resetForm" class="text-[10px] text-gray-500 underline">取消編輯</button>
           </div>
 
-          <div v-if="editingLogId || (userSettings.companies && userSettings.companies.length > 1)">
-            <label class="block text-[10px] text-[#737373] mb-1">選擇任職公司</label>
-            <select v-model="formCompany" class="w-full bg-white border p-1.5 text-xs font-bold">
+          <!-- 公司選擇（會計帳號自動鎖定其所屬公司） -->
+          <div>
+            <label class="block text-[10px] text-[#737373] mb-1">任職公司</label>
+            <input v-if="userRole === 'accounting'" :value="userCompany" disabled class="w-full bg-gray-100 border p-1.5 text-xs font-bold text-gray-600">
+            <select v-else v-model="formCompany" class="w-full bg-white border p-1.5 text-xs font-bold">
               <option v-for="comp in availableCompanies" :key="comp" :value="comp">{{ comp }}</option>
             </select>
           </div>
 
           <div class="grid grid-cols-2 gap-2">
-            <button 
-              @click="formPayMode = 'day'" 
-              :class="['p-1.5 border text-center', formPayMode === 'day' ? 'bg-[#111111] text-white' : 'bg-white']"
-            >按日計算</button>
-            <button 
-              @click="formPayMode = 'hour'" 
-              :class="['p-1.5 border text-center', formPayMode === 'hour' ? 'bg-[#111111] text-white' : 'bg-white']"
-            >按時計算</button>
+            <button @click="formPayMode = 'day'" :class="['p-1.5 border text-center', formPayMode === 'day' ? 'bg-[#111111] text-white' : 'bg-white']">按日計算</button>
+            <button @click="formPayMode = 'hour'" :class="['p-1.5 border text-center', formPayMode === 'hour' ? 'bg-[#111111] text-white' : 'bg-white']">按時計算</button>
           </div>
 
           <div v-if="formPayMode === 'day'" class="space-y-2">
             <div class="grid grid-cols-3 gap-1">
-              <button 
-                v-for="(val, key) in statusOptions" 
-                :key="key"
-                @click="formStatus = key"
-                :class="['p-1 border text-center text-[10px]', formStatus === key ? 'bg-[#111111] text-white' : 'bg-white']"
-              >
+              <button v-for="(val, key) in statusOptions" :key="key" @click="formStatus = key" :class="['p-1 border text-center text-[10px]', formStatus === key ? 'bg-[#111111] text-white' : 'bg-white']">
                 {{ val.label }}
               </button>
             </div>
@@ -206,50 +197,6 @@
       </div>
     </div>
 
-    <!-- 偏好設定彈窗 Modal -->
-    <div v-if="showSettings" class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-      <div class="bg-[#FAF9F6] border border-[#111111] p-4 max-w-sm w-full space-y-3 font-mono text-xs">
-        <div class="flex justify-between items-center border-b pb-2">
-          <h3 class="font-bold text-[#111111]">帳號偏好與公司設定</h3>
-          <button @click="showSettings = false">✕</button>
-        </div>
-        
-        <div class="space-y-3">
-          <div>
-            <label class="block text-[#737373] mb-1">任職公司名稱清單 (可多家)</label>
-            <div v-for="(comp, index) in settingsCompanies" :key="index" class="flex items-center space-x-1 mb-1">
-              <input v-model="settingsCompanies[index]" type="text" class="flex-1 bg-white border p-1 text-xs" placeholder="公司名稱">
-              <button @click="removeCompanyInput(index)" class="text-red-500 font-bold px-1" v-if="settingsCompanies.length > 1">✕</button>
-            </div>
-            <button @click="addCompanyInput" class="text-blue-600 underline text-[10px] mt-1">+ 新增一家公司</button>
-          </div>
-
-          <div>
-            <label class="block text-[#737373] mb-1">預設計薪模式</label>
-            <div class="grid grid-cols-2 gap-2">
-              <button @click="userSettings.pay_mode = 'day'" :class="['p-1 border', userSettings.pay_mode === 'day' ? 'bg-black text-white' : 'bg-white']">按日計算</button>
-              <button @click="userSettings.pay_mode = 'hour'" :class="['p-1 border', userSettings.pay_mode === 'hour' ? 'bg-black text-white' : 'bg-white']">按時計算</button>
-            </div>
-          </div>
-
-          <div>
-            <label class="block text-[#737373] mb-1">預設單價 (日薪基礎價 或 時薪)</label>
-            <input v-model.number="userSettings.default_rate" type="number" class="w-full bg-white border p-1.5 text-xs">
-          </div>
-
-          <div>
-            <label class="block text-[#737373] mb-1">貨幣符號</label>
-            <input v-model="userSettings.currency" type="text" class="w-full bg-white border p-1.5 text-xs">
-          </div>
-        </div>
-
-        <div class="flex justify-end space-x-2 pt-2 border-t">
-          <button @click="showSettings = false" class="px-3 py-1 border text-xs">取消</button>
-          <button @click="saveSettings" class="px-3 py-1 bg-[#111111] text-white text-xs">儲存設定</button>
-        </div>
-      </div>
-    </div>
-
   </div>
 
   <script>
@@ -258,24 +205,18 @@
     createApp({
       setup() {
         const currentUser = ref('');
-        const isAdmin = ref(false);
+        const userRole = ref('employee');
+        const userCompany = ref('');
         const userList = ref([]);
         const targetUser = ref('');
 
-        const currentYear = ref(new Date().getFullYear());
-        const currentMonth = ref(new Date().getMonth() + 1);
+        const currentYear = ref(2026);
+        const currentMonth = ref(8);
         
         const summary = ref({ total_hours: 0, total_salary: 0, by_company: {} });
         const logs = ref({});
         
-        const userSettings = ref({
-          pay_mode: 'day',
-          default_rate: 700,
-          currency: '$',
-          companies: ['預設公司']
-        });
-        
-        const settingsCompanies = ref(['預設公司']);
+        const userSettings = ref({ pay_mode: 'day', default_rate: 700, currency: '$', companies: ['預設公司'] });
         const showSettings = ref(false);
 
         const selectedDay = ref(null);
@@ -295,36 +236,16 @@
           'ot_3.0': { label: '加班 3.0x' }
         };
 
-        // 過濾選單：防止重複顯示目前登入者（不分大小寫）
-        const filteredUserList = computed(() => {
-          return userList.value.filter(u => u.toLowerCase() !== currentUser.value.toLowerCase());
-        });
+        const availableCompanies = computed(() => userSettings.value.companies || ['預設公司']);
 
-        const availableCompanies = computed(() => {
-          const comps = [...(userSettings.value.companies || ['預設公司'])];
-          if (formCompany.value && !comps.includes(formCompany.value)) {
-            comps.push(formCompany.value);
-          }
-          return Array.from(new Set(comps));
-        });
-
-        // 核心天數/小時格式化邏輯
         const formatDuration = (totalDecimalHours) => {
-          if (!totalDecimalHours || totalDecimalHours <= 0) {
-            return userSettings.value.pay_mode === 'day' ? '0 天' : '0 小時 0 分鐘';
-          }
-
+          if (!totalDecimalHours || totalDecimalHours <= 0) return '0 天';
           const totalMinutes = Math.round(totalDecimalHours * 60);
 
           if (userSettings.value.pay_mode === 'day') {
             const days = totalDecimalHours / 8;
-            
-            // 完美整天或半天（例如: 1 天, 1.5 天, 11 天）直接顯示
-            if (days % 0.5 === 0) {
-              return `${days} 天`;
-            }
+            if (days % 0.5 === 0) return `${days} 天`;
 
-            // 非整數或半天的天數（例如: 7.8 天），轉為「X 天 Y 小時 Z 分鐘」
             const wholeDays = Math.floor(totalDecimalHours / 8);
             const remainingMinutes = totalMinutes - (wholeDays * 8 * 60);
             const hours = Math.floor(remainingMinutes / 60);
@@ -333,46 +254,20 @@
             let result = wholeDays > 0 ? `${wholeDays} 天 ` : '';
             if (hours > 0) result += `${hours} 小時 `;
             if (mins > 0) result += `${mins} 分鐘`;
-
             return result.trim();
           }
 
-          // 按時計算模式
           const hours = Math.floor(totalMinutes / 60);
           const mins = totalMinutes % 60;
-
-          if (hours >= 8) {
-            const d = Math.floor(hours / 8);
-            const h = hours % 8;
-            let res = `${d} 天 `;
-            if (h > 0) res += `${h} 小時 `;
-            if (mins > 0) res += `${mins} 分鐘`;
-            return res.trim();
-          }
-
           let res = '';
           if (hours > 0) res += `${hours} 小時 `;
           if (mins > 0) res += `${mins} 分鐘`;
           return res.trim() || '0 分鐘';
         };
 
-        const checkAuth = (res) => {
-          if (res.status === 401) {
-            window.location.href = '/login.html';
-            return false;
-          }
-          return true;
-        };
-
         const daysInMonth = computed(() => new Date(currentYear.value, currentMonth.value, 0).getDate());
         const firstDayOfWeek = computed(() => new Date(currentYear.value, currentMonth.value - 1, 1).getDay());
-
-        const formatDate = (day) => {
-          const m = String(currentMonth.value).padStart(2, '0');
-          const d = String(day).padStart(2, '0');
-          return `${currentYear.value}-${m}-${d}`;
-        };
-
+        const formatDate = (day) => `${currentYear.value}-${String(currentMonth.value).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const getLogs = (day) => logs.value[formatDate(day)] || [];
         const dayLogs = computed(() => selectedDay.value ? getLogs(selectedDay.value) : []);
         const getStatusLabel = (key) => statusOptions[key]?.label || key;
@@ -384,8 +279,7 @@
 
         const resetForm = () => {
           editingLogId.value = null;
-          const comps = userSettings.value.companies || ['預設公司'];
-          formCompany.value = comps[0] || '預設公司';
+          formCompany.value = userRole.value === 'accounting' ? userCompany.value : (userSettings.value.companies[0] || '預設公司');
           formPayMode.value = userSettings.value.pay_mode || 'day';
           formStatus.value = 'full';
           formRate.value = userSettings.value.default_rate || 700;
@@ -395,7 +289,7 @@
 
         const editLogItem = (item) => {
           editingLogId.value = item.id;
-          formCompany.value = item.company || '預設公司';
+          formCompany.value = item.company;
           formPayMode.value = item.pay_mode;
           formStatus.value = item.status === 'hourly' ? 'full' : item.status;
           formRate.value = item.rate;
@@ -404,13 +298,13 @@
         };
 
         const saveWorkItem = async () => {
-          const res = await fetch('/api/work/save', {
+          await fetch('/api/work/save', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               id: editingLogId.value,
               date: formatDate(selectedDay.value),
-              company: formCompany.value,
+              company: userRole.value === 'accounting' ? userCompany.value : formCompany.value,
               pay_mode: formPayMode.value,
               status: formStatus.value,
               rate: parseFloat(formRate.value) || 0,
@@ -419,121 +313,50 @@
               target_user: targetUser.value || currentUser.value
             })
           });
-          if (checkAuth(res)) {
-            resetForm();
-            await loadMonthData();
-          }
+          resetForm();
+          await loadMonthData();
         };
 
         const deleteLogItem = async (logId) => {
-          if (!confirm("確定要刪除這筆工作紀錄嗎？")) return;
-          const res = await fetch('/api/work/delete_item', {
+          if (!confirm("確定要刪除這筆紀錄嗎？")) return;
+          await fetch('/api/work/delete_item', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              log_id: logId,
-              target_user: targetUser.value || currentUser.value
-            })
+            body: JSON.stringify({ log_id: logId })
           });
-          if (checkAuth(res)) {
-            await loadMonthData();
-          }
-        };
-
-        const addCompanyInput = () => {
-          settingsCompanies.value.push('');
-        };
-
-        const removeCompanyInput = (index) => {
-          if (settingsCompanies.value.length > 1) {
-            settingsCompanies.value.splice(index, 1);
-          }
-        };
-
-        const fetchUsersList = async () => {
-          if (isAdmin.value) {
-            const uRes = await fetch('/api/admin/users');
-            if (uRes.ok) userList.value = await uRes.json();
-          }
+          await loadMonthData();
         };
 
         const fetchMe = async () => {
           const res = await fetch('/api/me');
-          if (checkAuth(res)) {
+          if (res.ok) {
             const data = await res.json();
             currentUser.value = data.username;
-            isAdmin.value = data.is_admin;
+            userRole.value = data.role;
+            userCompany.value = data.company || '';
             targetUser.value = data.username;
-            await fetchUsersList();
-          }
-        };
 
-        const onTargetUserChange = async () => {
-          await loadUserSettings();
-          await loadMonthData();
-        };
-
-        const deleteUser = async (username) => {
-          if (!confirm(`確定要永久刪除使用者「${username}」以及其所有資料嗎？`)) return;
-          const res = await fetch('/api/admin/users/delete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ target_user: username })
-          });
-          if (checkAuth(res)) {
-            if (res.ok) {
-              alert(`已刪除使用者 ${username}`);
-              targetUser.value = currentUser.value;
-              await fetchUsersList();
-              await onTargetUserChange();
+            if (userRole.value === 'accounting' || userRole.value === 'admin') {
+              const uRes = await fetch('/api/users');
+              if (uRes.ok) {
+                userList.value = await uRes.json();
+                if (userList.value.length > 0) targetUser.value = userList.value[0];
+              }
             }
           }
         };
 
-        const loadUserSettings = async () => {
-          const uParam = targetUser.value || currentUser.value;
-          const res = await fetch(`/api/settings?target_user=${uParam}&t=${Date.now()}`);
-          if (checkAuth(res)) {
-            const data = await res.json();
-            userSettings.value = data;
-            settingsCompanies.value = [...(data.companies || ['預設公司'])];
-          }
-        };
-
-        const saveSettings = async () => {
-          const validCompanies = settingsCompanies.value.map(c => typeof c === 'string' ? c.trim() : c).filter(c => c);
-          const res = await fetch('/api/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              pay_mode: userSettings.value.pay_mode,
-              default_rate: parseFloat(userSettings.value.default_rate) || 0, 
-              currency: userSettings.value.currency,
-              companies: validCompanies.length > 0 ? validCompanies : ['預設公司'],
-              target_user: targetUser.value || currentUser.value
-            })
-          });
-          if (checkAuth(res)) {
-            showSettings.value = false;
-            await loadUserSettings();
-            await loadMonthData();
-          }
-        };
+        const onTargetUserChange = async () => { await loadMonthData(); };
 
         const loadMonthData = async () => {
           const uParam = targetUser.value || currentUser.value;
           const url = `/api/work/${currentYear.value}/${currentMonth.value}?target_user=${uParam}&t=${Date.now()}`;
           const res = await fetch(url);
-          if (checkAuth(res)) {
+          if (res.ok) {
             const data = await res.json();
             logs.value = data.logs;
             summary.value = data.summary;
           }
-        };
-
-        const logout = async () => {
-          await fetch('/api/logout', { method: 'POST' });
-          window.location.href = '/login.html';
         };
 
         const changeMonth = (delta) => {
@@ -543,20 +366,20 @@
           loadMonthData();
         };
 
+        const logout = async () => { window.location.href = '/login.html'; };
+
         onMounted(async () => {
           await fetchMe();
-          await loadUserSettings();
           await loadMonthData();
         });
 
         return {
-          currentUser, isAdmin, userList, filteredUserList, targetUser, onTargetUserChange,
+          currentUser, userRole, userCompany, userList, targetUser, onTargetUserChange,
           currentYear, currentMonth, daysInMonth, firstDayOfWeek,
-          summary, userSettings, settingsCompanies, showSettings, saveSettings, changeMonth,
-          addCompanyInput, removeCompanyInput, formatDuration, availableCompanies,
+          summary, userSettings, showSettings, changeMonth, formatDuration, availableCompanies,
           selectedDay, openDayModal, dayLogs, editingLogId, resetForm, editLogItem, deleteLogItem,
           formCompany, formPayMode, formStatus, formRate, formHours, formLocation, saveWorkItem,
-          statusOptions, formatDate, getLogs, getStatusLabel, logout, loadMonthData, deleteUser
+          statusOptions, formatDate, getLogs, getStatusLabel, logout
         };
       }
     }).mount('#app');
