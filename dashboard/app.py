@@ -6,7 +6,19 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = 'super_secret_key_change_me_in_production'
+# 確保 Cookie 在跨網域與 HTTP 環境下皆能傳送
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = False
+
 DB_FILE = "data/dashboard.db"
+
+# 允許 CORS 跨網域請求 (解決前端 fetch 報錯問題)
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 
 def init_db():
     os.makedirs("data", exist_ok=True)
@@ -46,25 +58,6 @@ def init_db():
         )
     ''')
     
-    # 自動擴充與修復舊欄位
-    c.execute("PRAGMA table_info(users)")
-    user_cols = [col[1] for col in c.fetchall()]
-    if 'password' not in user_cols:
-        if 'password_hash' in user_cols:
-            c.execute("ALTER TABLE users RENAME COLUMN password_hash TO password")
-        else:
-            c.execute("ALTER TABLE users ADD COLUMN password TEXT")
-
-    c.execute("PRAGMA table_info(work_logs)")
-    work_cols = [col[1] for col in c.fetchall()]
-    if 'company' not in work_cols:
-        c.execute("ALTER TABLE work_logs ADD COLUMN company TEXT DEFAULT '預設公司'")
-
-    c.execute("PRAGMA table_info(user_settings)")
-    settings_cols = [col[1] for col in c.fetchall()]
-    if 'companies' not in settings_cols:
-        c.execute("ALTER TABLE user_settings ADD COLUMN companies TEXT DEFAULT '[\"預設公司\"]'")
-
     # 清除舊的 eason 帳號資料
     c.execute("DELETE FROM users WHERE username='eason'")
     c.execute("DELETE FROM user_settings WHERE username='eason'")
@@ -108,23 +101,30 @@ def serve_login():
 def serve_manifest():
     return send_from_directory('static', 'manifest.json')
 
-@app.route('/api/login', methods=['POST'])
+@app.route('/api/login', methods=['POST', 'OPTIONS'])
 def login():
-    data = request.json or {}
-    username = data.get('username', '').strip()
-    password = data.get('password', '').strip()
-    
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT password, is_admin FROM users WHERE username=?", (username,))
-    row = c.fetchone()
-    conn.close()
+    if request.method == 'OPTIONS':
+        return jsonify({"success": True}), 200
 
-    if row and check_password_hash(row[0], password):
-        session['username'] = username
-        session['is_admin'] = row[1]
-        return jsonify({"success": True, "username": username, "is_admin": row[1]})
-    return jsonify({"success": False, "message": "帳號或密碼錯誤"}), 401
+    try:
+        data = request.json or {}
+        username = data.get('username', '').strip()
+        password = data.get('password', '').strip()
+        
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT password, is_admin FROM users WHERE username=?", (username,))
+        row = c.fetchone()
+        conn.close()
+
+        if row and check_password_hash(row[0], password):
+            session['username'] = username
+            session['is_admin'] = row[1]
+            return jsonify({"success": True, "username": username, "is_admin": row[1]})
+        
+        return jsonify({"success": False, "message": "帳號或密碼錯誤"}), 401
+    except Exception as e:
+        return jsonify({"success": False, "message": f"伺服器錯誤: {str(e)}"}), 500
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
