@@ -13,7 +13,7 @@ def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     
-    # 建立表格（若不存在）
+    # 建立基礎表格
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +46,7 @@ def init_db():
         )
     ''')
     
-    # 自動相容與補齊舊資料庫缺少的欄位
+    # 自動擴充與修復舊欄位
     c.execute("PRAGMA table_info(users)")
     user_cols = [col[1] for col in c.fetchall()]
     if 'password' not in user_cols:
@@ -65,16 +65,20 @@ def init_db():
     if 'companies' not in settings_cols:
         c.execute("ALTER TABLE user_settings ADD COLUMN companies TEXT DEFAULT '[\"預設公司\"]'")
 
-    # 初始化預設管理者
-    c.execute("SELECT * FROM users WHERE username='eason'")
+    # 清除舊的 eason 帳號資料
+    c.execute("DELETE FROM users WHERE username='eason'")
+    c.execute("DELETE FROM user_settings WHERE username='eason'")
+
+    # 初始化預設管理者 (僅保留 admin)
+    c.execute("SELECT * FROM users WHERE username='admin'")
     if not c.fetchone():
-        hashed_pwd = generate_password_hash("eason")
-        c.execute("INSERT INTO users (username, password, is_admin) VALUES (?, ?, 1)", ("eason", hashed_pwd))
-        c.execute("INSERT OR IGNORE INTO user_settings (username, pay_mode, default_rate, currency, companies) VALUES (?, 'day', 700, '$', '[\"預設公司\"]')", ("eason",))
+        hashed_pwd = generate_password_hash("admin")
+        c.execute("INSERT INTO users (username, password, is_admin) VALUES (?, ?, 1)", ("admin", hashed_pwd))
+        c.execute("INSERT OR IGNORE INTO user_settings (username, pay_mode, default_rate, currency, companies) VALUES (?, 'day', 700, '$', '[\"預設公司\"]')", ("admin",))
 
     conn.commit()
     conn.close()
-    
+
 init_db()
 
 def get_current_user():
@@ -244,7 +248,6 @@ def settings():
             except:
                 pass
 
-        # 自動更換預設公司與批次移轉舊紀錄
         if "預設公司" in old_companies and "預設公司" not in companies:
             first_new_company = companies[0]
             c.execute("UPDATE work_logs SET company=? WHERE username=? AND (company='預設公司' OR company IS NULL OR company='')", (first_new_company, target_user))
