@@ -1,12 +1,17 @@
 import os
 import sqlite3
+from flask import Flask, request, jsonify, redirect, session
+from werkzeug.security import generate_password_hash, check_password_hash
 
-# 修正資料庫路徑為 data/dashboard.db
+app = Flask(__name__, static_folder='static', template_folder='static')
+# 優先讀取系統環境變數，若未設定則自動生成/使用預設值
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default-dev-key-change-it')
+
+# 指定資料庫路徑為 data/dashboard.db
 DB_DIR = 'data'
 DB_NAME = os.path.join(DB_DIR, 'dashboard.db')
 
 def get_db():
-    # 確保 data 資料夾存在
     if not os.path.exists(DB_DIR):
         os.makedirs(DB_DIR)
     conn = sqlite3.connect(DB_NAME)
