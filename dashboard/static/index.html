@@ -9,7 +9,7 @@
 <body class="bg-gray-100 min-h-screen p-4 md:p-8">
     <div class="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden p-6 space-y-6">
         
-        <!-- 頂部帳號資訊欄 -->
+        <!-- 頂部標題與帳號資訊 -->
         <div class="border-b pb-4">
             <div class="flex justify-between items-center mb-2">
                 <h1 class="text-2xl font-bold text-gray-800">工時與薪資記錄系統</h1>
@@ -18,17 +18,14 @@
                     <button onclick="logout()" class="text-sm text-red-500 hover:text-red-700">[登出]</button>
                 </div>
             </div>
-            <div class="flex items-center justify-between text-sm">
-                <div class="flex items-center space-x-2">
-                    <span class="text-gray-600">目前帳號:</span>
-                    <span id="currentUsername" class="font-bold text-gray-800 uppercase">--</span>
-                    <span id="currentRoleBadge" class="bg-black text-white text-xs px-2 py-0.5 rounded">管理者</span>
-                </div>
-                <button onclick="openAddModal()" class="bg-blue-600 text-white text-xs px-3 py-1.5 rounded font-medium hover:bg-blue-700">+ 新增工時</button>
+            <div class="flex items-center space-x-2 text-sm">
+                <span class="text-gray-600">目前帳號:</span>
+                <span id="currentUsername" class="font-bold text-gray-800 uppercase">--</span>
+                <span id="currentRoleBadge" class="bg-black text-white text-xs px-2 py-0.5 rounded">管理者</span>
             </div>
         </div>
 
-        <!-- 選擇審核目標員工 -->
+        <!-- 審核目標員工下拉選單 -->
         <div class="flex items-center justify-between bg-gray-50 p-3 rounded-lg border">
             <label for="employeeSelect" class="font-medium text-gray-700">審核目標員工:</label>
             <select id="employeeSelect" onchange="handleUserChange()" class="border border-gray-300 rounded px-3 py-1.5 text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -48,7 +45,7 @@
             </div>
         </div>
 
-        <!-- 月度總計 -->
+        <!-- 總工時與總薪資 -->
         <div class="text-gray-700 space-y-1">
             <div>總工時: <span id="totalHours" class="font-semibold text-gray-900">0 天 0 小時</span></div>
             <div>總薪資: <span id="totalSalary" class="font-semibold text-gray-900">$0</span></div>
@@ -62,121 +59,19 @@
             </div>
         </div>
 
-        <!-- 月曆視圖 -->
+        <!-- 日曆視圖 -->
         <div>
             <div class="grid grid-cols-7 gap-1 text-center text-xs font-medium text-gray-500 mb-2">
                 <div>週日</div><div>週一</div><div>週二</div><div>週三</div><div>週四</div><div>週五</div><div>週六</div>
             </div>
             <div id="calendarGrid" class="grid grid-cols-7 gap-1 text-center text-sm border-t pt-2">
-                <!-- 由 JS 動態生成 -->
+                <!-- 日曆網格由 JavaScript 動態渲染 -->
             </div>
         </div>
 
     </div>
 
-    <!-- 新增 / 編輯工時彈出視窗 (Work Modal) -->
-    <div id="workModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl max-w-md w-full p-6 space-y-4 shadow-xl">
-            <div class="flex justify-between items-center border-b pb-2">
-                <h3 id="modalTitle" class="text-lg font-bold text-gray-800">新增工時紀錄</h3>
-                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
-            </div>
-            <form id="workForm" onsubmit="saveWorkLog(event)" class="space-y-3 text-sm">
-                <input type="hidden" id="logId">
-                <div>
-                    <label class="block text-gray-700 font-medium mb-1">日期</label>
-                    <input type="date" id="logDate" required class="w-full border rounded px-3 py-2 border-gray-300">
-                </div>
-                <div>
-                    <label class="block text-gray-700 font-medium mb-1">公司名稱</label>
-                    <input type="text" id="logCompany" required placeholder="例如: 策高" class="w-full border rounded px-3 py-2 border-gray-300">
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                    <div>
-                        <label class="block text-gray-700 font-medium mb-1">工時 (小時)</label>
-                        <input type="number" step="0.5" id="logHours" required placeholder="8" class="w-full border rounded px-3 py-2 border-gray-300">
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 font-medium mb-1">時薪 / 計算率</label>
-                        <input type="number" step="1" id="logRate" required placeholder="200" class="w-full border rounded px-3 py-2 border-gray-300">
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                    <div>
-                        <label class="block text-gray-700 font-medium mb-1">計薪模式</label>
-                        <select id="logPayMode" class="w-full border rounded px-3 py-2 border-gray-300">
-                            <option value="時薪">時薪</option>
-                            <option value="日薪">日薪</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 font-medium mb-1">狀態</label>
-                        <select id="logStatus" class="w-full border rounded px-3 py-2 border-gray-300">
-                            <option value="正常">正常</option>
-                            <option value="審核中">審核中</option>
-                        </select>
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-gray-700 font-medium mb-1">工作地點</label>
-                    <input type="text" id="logLocation" placeholder="選填" class="w-full border rounded px-3 py-2 border-gray-300">
-                </div>
-                <div class="flex justify-end space-x-2 pt-3 border-t">
-                    <button type="button" onclick="closeModal()" class="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100">取消</button>
-                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium">儲存</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- 偏好與公司設定彈出視窗 (Settings Modal) -->
-    <div id="settingsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-xl max-w-md w-full p-6 space-y-4 shadow-xl">
-            <div class="flex justify-between items-center border-b pb-2">
-                <h3 class="text-lg font-bold text-gray-800">偏好與公司設定</h3>
-                <button onclick="closeSettingsModal()" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
-            </div>
-            
-            <div class="space-y-4 text-sm">
-                <!-- 每日標準工時 -->
-                <div>
-                    <label class="block font-medium text-gray-700 mb-1">每日標準工時 (換算天數用)</label>
-                    <input type="number" id="settingStandardHours" value="8" class="w-full border border-gray-300 rounded px-3 py-2">
-                </div>
-
-                <!-- 快速選擇公司名稱 -->
-                <div>
-                    <label class="block font-medium text-gray-700 mb-1">常用公司清單</label>
-                    <div id="companyList" class="space-y-1 mb-2">
-                        <div class="flex items-center justify-between bg-gray-50 p-2 rounded border">
-                            <span>策高</span>
-                            <span class="text-xs text-gray-400">預設</span>
-                        </div>
-                        <div class="flex items-center justify-between bg-gray-50 p-2 rounded border">
-                            <span>海洋公園</span>
-                            <span class="text-xs text-gray-400">預設</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 預設檢視設定 -->
-                <div>
-                    <label class="block font-medium text-gray-700 mb-1">系統主題 / 顯示樣式</label>
-                    <select class="w-full border border-gray-300 rounded px-3 py-2">
-                        <option value="light">標準明亮模式</option>
-                        <option value="compact">緊湊表格視圖</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="flex justify-end space-x-2 pt-3 border-t">
-                <button type="button" onclick="closeSettingsModal()" class="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100">關閉</button>
-                <button type="button" onclick="saveSettings()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium">儲存設定</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 腳本 -->
+    <!-- 系統腳本 -->
     <script>
         let currentDate = new Date();
         let activeUser = '';
@@ -215,6 +110,7 @@
                 option.value = user;
                 option.textContent = user;
                 
+                // 下拉選單預設選擇目前登入的使用者
                 if (user.toLowerCase() === loggedInUser.toLowerCase()) {
                     option.selected = true;
                 }
@@ -298,10 +194,9 @@
                 const dayLogs = logs[dateKey] || [];
 
                 const dayCell = document.createElement('div');
-                dayCell.className = `h-16 border rounded p-1 text-left relative text-xs flex flex-col justify-between cursor-pointer hover:border-blue-500 ${
+                dayCell.className = `h-16 border rounded p-1 text-left relative text-xs flex flex-col justify-between ${
                     dayLogs.length > 0 ? 'bg-black text-white' : 'bg-white text-gray-800'
                 }`;
-                dayCell.onclick = () => openAddModal(dateKey);
 
                 let logContent = '';
                 if (dayLogs.length > 0) {
@@ -317,62 +212,8 @@
             }
         }
 
-        // Work Modal Handler
-        function openAddModal(dateStr = '') {
-            document.getElementById('modalTitle').textContent = '新增工時紀錄';
-            document.getElementById('workForm').reset();
-            document.getElementById('logId').value = '';
-            if (dateStr) {
-                document.getElementById('logDate').value = dateStr;
-            } else {
-                document.getElementById('logDate').valueAsDate = new Date();
-            }
-            document.getElementById('workModal').classList.remove('hidden');
-        }
-
-        function closeModal() {
-            document.getElementById('workModal').classList.add('hidden');
-        }
-
-        // Settings Modal Handler
         function openSettings() {
-            document.getElementById('settingsModal').classList.remove('hidden');
-        }
-
-        function closeSettingsModal() {
-            document.getElementById('settingsModal').classList.add('hidden');
-        }
-
-        function saveSettings() {
-            closeSettingsModal();
-            alert('偏好設定已更新！');
-        }
-
-        async function saveWorkLog(e) {
-            e.preventDefault();
-            const payload = {
-                username: activeUser,
-                date: document.getElementById('logDate').value,
-                company: document.getElementById('logCompany').value,
-                hours: parseFloat(document.getElementById('logHours').value),
-                rate: parseFloat(document.getElementById('logRate').value),
-                pay_mode: document.getElementById('logPayMode').value,
-                status: document.getElementById('logStatus').value,
-                location: document.getElementById('logLocation').value
-            };
-
-            const res = await fetch('/api/work', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (res.ok) {
-                closeModal();
-                renderDashboard();
-            } else {
-                alert('儲存失敗，請檢查資料欄位');
-            }
+            window.location.href = '/settings.html';
         }
 
         async function logout() {
