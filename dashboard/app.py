@@ -5,8 +5,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__, static_folder='static', template_folder='static')
 
-# 優先讀取環境變數，若未設定則使用備用金鑰，防止容器啟動崩潰
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key_12345')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'my_default_super_secret_key_12345')
 
 # 設定 SQLite 資料庫路徑為 data/dashboard.db
 DB_DIR = 'data'
