@@ -6,17 +6,16 @@
     <title>工時與薪資記錄系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 min-h-screen p-4 md:p-8">
-    <div class="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden p-6 space-y-6">
+<body class="bg-gray-100 min-h-screen">
+    <!-- 主容器：寬螢幕滿版與外邊距 -->
+    <div class="w-full px-4 py-6 md:px-8">
         
-        <!-- 頂部標題與帳號資訊 -->
-        <div class="border-b pb-4">
-            <div class="flex justify-between items-center mb-2">
-                <h1 class="text-2xl font-bold text-gray-800">工時與薪資記錄系統</h1>
-                <div class="space-x-2">
-                    <button onclick="openSettings()" class="text-sm text-gray-500 hover:text-gray-700">[偏好與公司設定]</button>
-                    <button onclick="logout()" class="text-sm text-red-500 hover:text-red-700">[登出]</button>
-                </div>
+        <!-- 頂部標題與帳號列 -->
+        <div class="flex justify-between items-center border-b pb-4 mb-4">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800 inline-block mr-4">工時與薪資記錄系統</h1>
+                <button onclick="openSettings()" class="text-sm text-gray-500 hover:text-gray-700 mr-2">[偏好與公司設定]</button>
+                <button onclick="logout()" class="text-sm text-red-500 hover:text-red-700">[登出]</button>
             </div>
             <div class="flex items-center space-x-2 text-sm">
                 <span class="text-gray-600">目前帳號:</span>
@@ -25,53 +24,57 @@
             </div>
         </div>
 
-        <!-- 審核目標員工下拉選單 -->
-        <div class="flex items-center justify-between bg-gray-50 p-3 rounded-lg border">
+        <!-- 審核目標員工列 -->
+        <div class="bg-gray-200/60 p-3 rounded-lg flex items-center space-x-3 mb-6">
             <label for="employeeSelect" class="font-medium text-gray-700">審核目標員工:</label>
-            <select id="employeeSelect" onchange="handleUserChange()" class="border border-gray-300 rounded px-3 py-1.5 text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <select id="employeeSelect" onchange="handleUserChange()" class="border border-gray-300 rounded px-4 py-1.5 text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[160px]">
                 <option value="">載入中...</option>
             </select>
         </div>
 
-        <!-- 月份切換欄 -->
-        <div class="flex justify-between items-center py-2">
-            <div>
-                <span id="currentYearMonth" class="text-2xl font-bold text-gray-800">-- 年 -- 月</span>
+        <!-- 年月切換與總數資訊 -->
+        <div class="mb-6">
+            <div class="flex items-center space-x-6 mb-2">
+                <span id="currentYearMonth" class="text-3xl font-bold text-gray-800">-- 年 -- 月</span>
+                <div class="space-x-2 text-sm text-blue-600 font-medium">
+                    <button onclick="changeMonth(-1)" class="hover:underline">上個月</button>
+                    <span>/</span>
+                    <button onclick="changeMonth(1)" class="hover:underline">下個月</button>
+                </div>
             </div>
-            <div class="space-x-2 text-sm text-blue-600">
-                <button onclick="changeMonth(-1)" class="hover:underline">上個月</button>
-                <span>/</span>
-                <button onclick="changeMonth(1)" class="hover:underline">下個月</button>
-            </div>
-        </div>
-
-        <!-- 總工時與總薪資 -->
-        <div class="text-gray-700 space-y-1">
-            <div>總工時: <span id="totalHours" class="font-semibold text-gray-900">0 天 0 小時</span></div>
-            <div>總薪資: <span id="totalSalary" class="font-semibold text-gray-900">$0</span></div>
-        </div>
-
-        <!-- 各公司小計 -->
-        <div class="border rounded-lg p-4 bg-gray-50 space-y-3">
-            <h2 class="text-sm font-medium text-gray-600">各公司工時與薪資小計:</h2>
-            <div id="companyBreakdown" class="space-y-2">
-                <div class="text-sm text-gray-400">無紀錄</div>
+            <div class="text-gray-800 text-lg space-y-1 font-medium">
+                <div>總工時: <span id="totalHours">0 天 0 小時</span></div>
+                <div>總薪資: <span id="totalSalary">$0</span></div>
             </div>
         </div>
 
-        <!-- 日曆視圖 -->
-        <div>
-            <div class="grid grid-cols-7 gap-1 text-center text-xs font-medium text-gray-500 mb-2">
-                <div>週日</div><div>週一</div><div>週二</div><div>週三</div><div>週四</div><div>週五</div><div>週六</div>
+        <!-- 各公司工時與薪資小計（橫向並排橫條） -->
+        <div class="mb-6">
+            <div class="text-sm text-gray-600 mb-2 font-medium">各公司工時與薪資小計:</div>
+            <div id="companyBreakdown" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="bg-gray-100 p-3 rounded border text-gray-400">無紀錄</div>
             </div>
-            <div id="calendarGrid" class="grid grid-cols-7 gap-1 text-center text-sm border-t pt-2">
-                <!-- 日曆網格由 JavaScript 動態渲染 -->
+        </div>
+
+        <!-- 月曆視圖（全螢幕大格網） -->
+        <div class="border rounded-lg bg-white overflow-hidden shadow-sm">
+            <div class="grid grid-cols-7 gap-px bg-gray-200 text-center text-sm font-medium text-gray-600 border-b">
+                <div class="bg-white py-2">週日</div>
+                <div class="bg-white py-2">週一</div>
+                <div class="bg-white py-2">週二</div>
+                <div class="bg-white py-2">週三</div>
+                <div class="bg-white py-2">週四</div>
+                <div class="bg-white py-2">週五</div>
+                <div class="bg-white py-2">週六</div>
+            </div>
+            <div id="calendarGrid" class="grid grid-cols-7 gap-px bg-gray-200">
+                <!-- 日曆格子由 JS 動態生成 -->
             </div>
         </div>
 
     </div>
 
-    <!-- 系統腳本 -->
+    <!-- 系統核心邏輯 -->
     <script>
         let currentDate = new Date();
         let activeUser = '';
@@ -110,7 +113,7 @@
                 option.value = user;
                 option.textContent = user;
                 
-                // 下拉選單預設選擇目前登入的使用者
+                // 下拉選單預設選擇目前登入的使用者 (admin)
                 if (user.toLowerCase() === loggedInUser.toLowerCase()) {
                     option.selected = true;
                 }
@@ -142,37 +145,40 @@
             const summary = data.summary || { total_hours: 0, total_salary: 0, by_company: {} };
             const logs = data.logs || {};
 
-            const days = Math.floor(summary.total_hours / 8);
+            // 渲染總工時與薪資
+            const days = (summary.total_hours / 8).toFixed(1).replace(/\.0$/, '');
             const hours = summary.total_hours % 8;
             document.getElementById('totalHours').textContent = `${days} 天 ${hours} 小時`;
             document.getElementById('totalSalary').textContent = `$${summary.total_salary.toLocaleString()}`;
 
+            // 渲染各公司橫排小計卡片
             const breakdownEl = document.getElementById('companyBreakdown');
             breakdownEl.innerHTML = '';
             const companies = Object.keys(summary.by_company);
 
             if (companies.length === 0) {
-                breakdownEl.innerHTML = '<div class="text-sm text-gray-400">無紀錄</div>';
+                breakdownEl.innerHTML = '<div class="bg-gray-100 p-3 rounded border text-gray-400">無紀錄</div>';
             } else {
                 companies.forEach(comp => {
                     const compData = summary.by_company[comp];
-                    const cDays = Math.floor(compData.hours / 8);
-                    const cHours = compData.hours % 8;
-                    const timeStr = cDays > 0 ? `${cDays} 天 ${cHours} 小時` : `${cHours} 小時`;
+                    const cDays = (compData.hours / 8).toFixed(1).replace(/\.0$/, '');
 
                     const item = document.createElement('div');
-                    item.className = 'flex justify-between items-center bg-white p-2.5 rounded border text-sm';
+                    item.className = 'bg-gray-100/80 p-3 rounded border flex justify-between items-center text-base';
                     item.innerHTML = `
-                        <div>🏢 <span class="font-medium">${comp}</span></div>
-                        <div class="text-right">
-                            <span class="font-semibold">${timeStr}</span> | 
-                            <span class="font-bold text-gray-900">$${compData.salary.toLocaleString()}</span>
+                        <div class="flex items-center space-x-2">
+                            <span>🏢</span>
+                            <span class="font-bold text-gray-800">${comp}</span>
+                        </div>
+                        <div class="font-bold text-gray-900">
+                            ${cDays} 天 <span class="mx-1">|</span> $${compData.salary.toLocaleString()}
                         </div>
                     `;
                     breakdownEl.appendChild(item);
                 });
             }
 
+            // 渲染全螢幕大日曆
             renderCalendarGrid(year, month, logs);
         }
 
@@ -183,37 +189,47 @@
             const firstDay = new Date(year, month - 1, 1).getDay();
             const totalDays = new Date(year, month, 0).getDate();
 
+            // 補齊月首空白格子
             for (let i = 0; i < firstDay; i++) {
                 const emptyCell = document.createElement('div');
-                emptyCell.className = 'h-16 border rounded bg-gray-50';
+                emptyCell.className = 'bg-gray-50 min-h-[110px] p-2';
                 gridEl.appendChild(emptyCell);
             }
 
+            // 繪製每日格子（包含右上角筆數標籤與底部公司金額標籤）
             for (let day = 1; day <= totalDays; day++) {
                 const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                 const dayLogs = logs[dateKey] || [];
 
                 const dayCell = document.createElement('div');
-                dayCell.className = `h-16 border rounded p-1 text-left relative text-xs flex flex-col justify-between ${
+                dayCell.className = `min-h-[110px] p-2 relative flex flex-col justify-between ${
                     dayLogs.length > 0 ? 'bg-black text-white' : 'bg-white text-gray-800'
                 }`;
 
-                let logContent = '';
+                let topBadge = '';
+                let bottomInfo = '';
+
                 if (dayLogs.length > 0) {
-                    const compName = dayLogs[0].company.substring(0, 2);
-                    logContent = `<div class="bg-gray-800 text-white rounded px-1 py-0.5 text-[10px] truncate">1 筆工作 [${compName}...]</div>`;
+                    topBadge = `<span class="bg-gray-700 text-white text-xs px-1.5 py-0.5 rounded">${dayLogs.length} 筆工作</span>`;
+                    
+                    const comp = dayLogs[0].company || '';
+                    const salary = dayLogs[0].salary || (dayLogs[0].hours * dayLogs[0].rate) || 0;
+                    bottomInfo = `<div class="text-xs text-gray-300 font-mono">[${comp}] +$${salary}</div>`;
                 }
 
                 dayCell.innerHTML = `
-                    <div class="font-bold">${day}</div>
-                    ${logContent}
+                    <div class="flex justify-between items-start">
+                        <span class="font-bold text-base">${day}</span>
+                        ${topBadge}
+                    </div>
+                    ${bottomInfo}
                 `;
                 gridEl.appendChild(dayCell);
             }
         }
 
         function openSettings() {
-            window.location.href = '/settings.html';
+            alert('偏好與公司設定功能');
         }
 
         async function logout() {
@@ -224,4 +240,4 @@
         window.onload = init;
     </script>
 </body>
-</html>
+</html>s
