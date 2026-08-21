@@ -69,12 +69,11 @@ def init_db():
     c.execute("DELETE FROM users WHERE username='eason'")
     c.execute("DELETE FROM user_settings WHERE username='eason'")
 
-    # 初始化預設管理者 (僅保留 admin)
-    c.execute("SELECT * FROM users WHERE username='admin'")
-    if not c.fetchone():
-        hashed_pwd = generate_password_hash("admin")
-        c.execute("INSERT INTO users (username, password, is_admin) VALUES (?, ?, 1)", ("admin", hashed_pwd))
-        c.execute("INSERT OR IGNORE INTO user_settings (username, pay_mode, default_rate, currency, companies) VALUES (?, 'day', 700, '$', '[\"預設公司\"]')", ("admin",))
+    # 強制重置 admin 帳號密碼為 admin
+    hashed_pwd = generate_password_hash("admin")
+    c.execute("DELETE FROM users WHERE username='admin'")
+    c.execute("INSERT INTO users (username, password, is_admin) VALUES ('admin', ?, 1)", (hashed_pwd,))
+    c.execute("INSERT OR IGNORE INTO user_settings (username, pay_mode, default_rate, currency, companies) VALUES ('admin', 'day', 700, '$', '[\"預設公司\"]')")
 
     conn.commit()
     conn.close()
@@ -100,6 +99,10 @@ def serve_index():
     if not get_current_user():
         return send_from_directory('static', 'login.html')
     return send_from_directory('static', 'index.html')
+
+@app.route('/login.html')
+def serve_login():
+    return send_from_directory('static', 'login.html')
 
 @app.route('/manifest.json')
 def serve_manifest():
