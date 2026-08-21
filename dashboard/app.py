@@ -1,8 +1,5 @@
-import os
 import sqlite3
-from datetime import datetime
-from functools import wraps
-from flask import Flask, request, jsonify, render_template, session, redirect, url_for, send_file
+from flask import Flask, request, jsonify, redirect, session
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__, static_folder='static', template_folder='static')
@@ -14,19 +11,18 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
+# 初始化資料庫（僅建立 Missing Table，不修改/覆蓋任何舊資料）
 def init_db():
     with get_db() as conn:
-        # 使用者表：role 可為 'admin', 'employee', 'accounting'
         conn.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'employee',
-                company TEXT -- 若為 accounting，綁定其可管理的公司名稱
+                company TEXT
             )
         ''')
-        # 工作紀錄表：新增 source 欄位 ('employee' 或 'accounting')
         conn.execute('''
             CREATE TABLE IF NOT EXISTS work_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,44 +35,19 @@ def init_db():
                 hours REAL NOT NULL,
                 daily_pay REAL NOT NULL,
                 location TEXT,
-                source TEXT NOT NULL DEFAULT 'employee'
+                source TEXT DEFAULT 'employee'
             )
         ''')
-        # 設定檔表
+        # 確保 admin 帳號存在
         conn.execute('''
-            CREATE TABLE IF NOT EXISTS user_settings (
-                username TEXT PRIMARY KEY,
-                pay_mode TEXT DEFAULT 'day',
-                default_rate REAL DEFAULT 700,
-                currency TEXT DEFAULT '$',
-                companies TEXT DEFAULT '預設公司'
-            )
-        ''')
-        
-        # 預設建立測試帳號 (密碼均為 123456)
-        try:
-            conn.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", 
-                         ('admin', generate_password_hash('123456'), 'admin'))
-            conn.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", 
-                         ('user1', generate_password_hash('123456'), 'employee'))
-            conn.execute("INSERT INTO users (username, password, role, company) VALUES (?, ?, ?, ?)", 
-                         ('acc_ocean', generate_password_hash('123456'), 'accounting', '海洋公園'))
-        except sqlite3.IntegrityError:
-            pass
-            
+            INSERT INTO users (username, password, role) 
+            VALUES ('admin', ?, 'admin')
+            ON CONFLICT(username) DO NOTHING
+        ''', (generate_password_hash('123456'),))
         conn.commit()
 
 init_db()
 
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'username' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
-        return f(*args, **kwargs)
-    return decorated_function
-
-# --- 根目錄與靜態頁面路由 ---
 @app.route('/')
 def index():
     if 'username' not in session:
@@ -87,19 +58,16 @@ def index():
 def login_page():
     return app.send_static_file('login.html')
 
-# --- 身分驗證 API ---
 @app.route('/api/login', methods=['POST'])
 def login():
-    data = request.json
+    data = request.json or {}
     username = data.get('username')
     password = data.get('password')
-
     with get_db() as conn:
         user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
         if user and check_password_hash(user['password'], password):
             session['username'] = user['username']
             session['role'] = user['role']
-            session['company'] = user['company']
             return jsonify({'status': 'success'})
         return jsonify({'error': '帳號或密碼錯誤'}), 400
 
@@ -109,48 +77,30 @@ def logout():
     return jsonify({'status': 'success'})
 
 @app.route('/api/me')
-@login_required
 def get_me():
+    if 'username' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
     return jsonify({
         'username': session['username'],
-        'role': session.get('role', 'employee'),
-        'company': session.get('company', '')
+        'role': session.get('role', 'admin')
     })
 
 @app.route('/api/users')
-@login_required
 def get_users():
-    if session.get('role') not in ['admin', 'accounting']:
-        return jsonify([])
     with get_db() as conn:
-        # 抓出系統內所有使用者，包含 admin 自身
-        users = conn.execute("SELECT username FROM users").fetchall()
+        # 抓出 work_logs 與 users 中出現過的所有使用者
+        users = conn.execute("SELECT DISTINCT username FROM work_logs UNION SELECT username FROM users").fetchall()
         return jsonify([u['username'] for u in users])
 
-# --- 工時紀錄 API ---
 @app.route('/api/work/<int:year>/<int:month>')
-@login_required
 def get_work_logs(year, month):
-    current_user = session['username']
-    user_role = session.get('role', 'employee')
-    user_company = session.get('company')
-    target_user = request.args.get('target_user', current_user)
-    
-    # 一般員工只能看自己的資料
-    if user_role == 'employee':
-        target_user = current_user
-
+    target_user = request.args.get('target_user', session.get('username'))
     month_str = f"{year}-{month:02d}"
     
     with get_db() as conn:
-        if user_role == 'accounting' and user_company:
-            # 會計權限：抓取該公司的資料
-            query = "SELECT * FROM work_logs WHERE username = ? AND date LIKE ? AND company = ?"
-            rows = conn.execute(query, (target_user, f"{month_str}%", user_company)).fetchall()
-        else:
-            # 管理員或一般員工：直接抓取對應使用者的所有工時紀錄
-            query = "SELECT * FROM work_logs WHERE username = ? AND date LIKE ?"
-            rows = conn.execute(query, (target_user, f"{month_str}%")).fetchall()
+        # 完全放寬查詢：只依據 target_user 與月份查詢
+        query = "SELECT * FROM work_logs WHERE username = ? AND date LIKE ?"
+        rows = conn.execute(query, (target_user, f"{month_str}%")).fetchall()
 
         logs = {}
         total_hours = 0
@@ -184,95 +134,5 @@ def get_work_logs(year, month):
             }
         })
 
-@app.route('/api/work/save', methods=['POST'])
-@login_required
-def save_work():
-    data = request.json
-    current_user = session['username']
-    user_role = session.get('role', 'employee')
-    user_company = session.get('company')
-
-    target_user = data.get('target_user', current_user)
-    if user_role == 'employee':
-        target_user = current_user
-        company = data.get('company', '預設公司')
-        source = 'employee'
-    elif user_role == 'accounting':
-        company = user_company
-        source = 'accounting'
-    else:
-        company = data.get('company', '預設公司')
-        source = 'employee'
-
-    pay_mode = data.get('pay_mode', 'day')
-    status = data.get('status', 'full')
-    rate = float(data.get('rate', 0))
-    hours = float(data.get('hours', 0))
-    location = data.get('location', '')
-    date = data.get('date')
-    log_id = data.get('id')
-
-    if pay_mode == 'day':
-        multipliers = {'half': 0.5, 'full': 1.0, 'ot_1.5': 1.5, 'ot_2.0': 2.0, 'ot_3.0': 3.0}
-        daily_pay = rate * multipliers.get(status, 1.0)
-        if status == 'half': hours = 4.0
-        elif status == 'full': hours = 8.0
-    else:
-        daily_pay = rate * hours
-
-    with get_db() as conn:
-        if log_id:
-            conn.execute('''
-                UPDATE work_logs 
-                SET company=?, pay_mode=?, status=?, rate=?, hours=?, daily_pay=?, location=?
-                WHERE id=?
-            ''', (company, pay_mode, status, rate, hours, daily_pay, location, log_id))
-        else:
-            conn.execute('''
-                INSERT INTO work_logs (username, date, company, pay_mode, status, rate, hours, daily_pay, location, source)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (target_user, date, company, pay_mode, status, rate, hours, daily_pay, location, source))
-        conn.commit()
-
-    return jsonify({'status': 'success'})
-
-@app.route('/api/work/delete_item', methods=['POST'])
-@login_required
-def delete_work():
-    data = request.json
-    log_id = data.get('log_id')
-    with get_db() as conn:
-        conn.execute("DELETE FROM work_logs WHERE id = ?", (log_id,))
-        conn.commit()
-    return jsonify({'status': 'success'})
-
-@app.route('/api/settings', methods=['GET', 'POST'])
-@login_required
-def handle_settings():
-    username = session['username']
-    with get_db() as conn:
-        if request.method == 'POST':
-            data = request.json
-            companies_str = ",".join(data.get('companies', ['預設公司']))
-            conn.execute('''
-                INSERT INTO user_settings (username, pay_mode, default_rate, currency, companies)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(username) DO UPDATE SET
-                    pay_mode=excluded.pay_mode,
-                    default_rate=excluded.default_rate,
-                    currency=excluded.currency,
-                    companies=excluded.companies
-            ''', (username, data.get('pay_mode'), data.get('default_rate'), data.get('currency'), companies_str))
-            conn.commit()
-            return jsonify({'status': 'success'})
-        else:
-            row = conn.execute("SELECT * FROM user_settings WHERE username = ?", (username,)).fetchone()
-            if row:
-                res = dict(row)
-                res['companies'] = res['companies'].split(',') if res['companies'] else ['預設公司']
-                return jsonify(res)
-            return jsonify({'pay_mode': 'day', 'default_rate': 700, 'currency': '$', 'companies': ['預設公司']})
-
 if __name__ == '__main__':
-    # 務必包含 host='0.0.0.0' 以便 Docker 對外通訊
     app.run(host='0.0.0.0', port=5000, debug=True)
