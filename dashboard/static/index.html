@@ -36,7 +36,7 @@
         </select>
       </div>
       <button 
-        v-if="targetUser && targetUser !== currentUser" 
+        v-if="targetUser && targetUser.toLowerCase() !== currentUser.toLowerCase()" 
         @click="deleteUser(targetUser)" 
         class="bg-red-600 text-white px-2 py-1 text-[10px] font-bold hover:bg-red-700"
       >
@@ -295,8 +295,9 @@
           'ot_3.0': { label: '加班 3.0x' }
         };
 
+        // 過濾選單，排除目前登入者（不分大小寫）
         const filteredUserList = computed(() => {
-          return userList.value.filter(u => u !== currentUser.value);
+          return userList.value.filter(u => u.toLowerCase() !== currentUser.value.toLowerCase());
         });
 
         const availableCompanies = computed(() => {
@@ -307,15 +308,16 @@
           return Array.from(new Set(comps));
         });
 
+        // 格式化顯示時間（全中文介面）
         const formatDuration = (totalDecimalHours) => {
           if (!totalDecimalHours || totalDecimalHours <= 0) {
-            return userSettings.value.pay_mode === 'day' ? '0 days' : '0hour 0mins';
+            return userSettings.value.pay_mode === 'day' ? '0 天' : '0 小時 0 分鐘';
           }
           
           if (userSettings.value.pay_mode === 'day') {
             const days = totalDecimalHours / 8;
             const formattedDays = days % 1 === 0 ? days : days.toFixed(1);
-            return `${formattedDays} day${days > 1 ? 's' : ''}`;
+            return `${formattedDays} 天`;
           }
 
           const totalMinutes = Math.round(totalDecimalHours * 60);
@@ -325,9 +327,9 @@
           const mins = remainingMinutesAfterDays % 60;
 
           if (days > 0) {
-            return `${days}days ${hours}hour ${mins}mins`;
+            return `${days} 天 ${hours} 小時 ${mins} 分鐘`;
           } else {
-            return `${hours}hour ${mins}mins`;
+            return `${hours} 小時 ${mins} 分鐘`;
           }
         };
 
