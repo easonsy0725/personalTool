@@ -98,7 +98,7 @@ def init_db():
         c.execute("ALTER TABLE user_settings ADD COLUMN companies TEXT DEFAULT '[\"預設公司\"]'")
 
     # 安全的預設 admin 初始化：僅在不存在時建立，保護已有資料！
-    c.execute("SELECT id FROM users WHERE username='admin'")
+    c.execute("SELECT username FROM users WHERE username='admin'")
     if not c.fetchone():
         hashed_pwd = generate_password_hash("admin")
         c.execute("INSERT INTO users (username, password, is_admin, role) VALUES ('admin', ?, 1, 'admin')", (hashed_pwd,))
